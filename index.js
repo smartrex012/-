@@ -189,9 +189,11 @@ function getApiTime(mode = "OnDemand") {
   return { baseDate, baseTime, forecastTime, forecastHourForPrompt, forecastDate };
 }
 
+
+// =========================================================================
 async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDate) {
   try {
-    // (doc.loadInfo()는 봇 시작 시 1회만 실행)
+    await doc.loadInfo(); 
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
     if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
@@ -201,9 +203,14 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
     let dailyTemps = [];
 
+    // ⚠️ [수정] "0500"(String)을 500(Number)으로 변환하여 비교 준비
+    const targetTimeNumber = parseInt(forecastTime, 10); 
+
     for (const row of rows) {
+      // (시트 열 순서: [0]fcstDate, [1]fcstTime, [2]category, [3]fcstValue)
+      // ⚠️ row.get('fcstTime')은 Google Sheet에서 500 (Number)으로 읽어옵니다.
       const date = row.get('fcstDate');
-      const time = row.get('fcstTime');
+      const time = row.get('fcstTime'); 
       const category = row.get('category');
       const value = row.get('fcstValue');
 
@@ -211,7 +218,8 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
         if (category === "TMP") dailyTemps.push(parseFloat(value));
       }
       
-      if (date == forecastDate && time == forecastTime) {
+      // ⚠️ [수정] 숫자(time)와 숫자(targetTimeNumber)를 비교
+      if (date == forecastDate && time == targetTimeNumber) { 
         switch (category) {
           case "TMP": extracted.temp = parseFloat(value); break;
           case "POP": extracted.precipProb = parseInt(value, 10); break;
@@ -222,7 +230,11 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
       }
     }
     
-    if (extracted.temp === null) { throw new Error(`Sheet에서 ${forecastTime}시 예보 데이터를 찾을 수 없습니다.`); }
+    if (extracted.temp === null) { 
+      // [수정] 로그에 숫자 비교가 보이도록 추가
+      throw new Error(`Sheet에서 ${forecastTime}시(숫자: ${targetTimeNumber}) 예보 데이터를 찾을 수 없습니다.`); 
+    }
+    
     if (dailyTemps.length > 0) {
       extracted.tmx = Math.max(...dailyTemps);
       extracted.tmn = Math.min(...dailyTemps);
