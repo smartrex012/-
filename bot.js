@@ -3,6 +3,7 @@ const { Client, GatewayIntentBits, REST, Routes } = require('discord.js');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const axios = require('axios');
+const cron = require('node-cron');
 
 // --- 0. 설정 (Secrets에서 불러오기) ---
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -49,22 +50,19 @@ client.once('ready', () => {
 client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand() || interaction.commandName !== 'weather') return;
 
-  // 1. [3초 규칙 해결] "로딩 중..." 응답
-  await interaction.deferReply({ ephemeral: true }); // '나에게만 보이는' 로딩
+  await interaction.deferReply({ ephemeral: true }); 
 
   try {
     const userId = interaction.user.id;
     const userName = interaction.user.username;
 
-    // 2. (빠름) 구독자인지 확인
     const userLocation = await getUserLocation(userId);
     if (!userLocation) {
       await interaction.editReply("🚨 구독자 목록(`Subscribers` 시트)에 등록되지 않은 사용자입니다.");
       return;
     }
 
-    // 3. (빠름) Google Sheet에서 데이터 읽기
-    const times = getApiTime("OnDemand"); // '다음 시간' 기준
+    const times = getApiTime("OnDemand"); 
     const extractedData = await readDataFromSheet(times.forecastTime, times.forecastHourForPrompt, times.forecastDate);
     
     if (!extractedData) {
@@ -73,14 +71,8 @@ client.on('interactionCreate', async interaction => {
     }
     
     extractedData.locationName = userLocation;
-
-    // 4. (빠름) AI 메시지 생성
     const finalMessage = await generatePolicyMessage(extractedData);
-    
-    // 5. (빠름) DM 전송
     await interaction.user.send(finalMessage);
-    
-    // 6. 최종 응답
     await interaction.editReply(`✅ ${userName}님의 DM으로 ${extractedData.forecastHour} 날씨 정보를 보냈어요!`);
 
   } catch (e) {
@@ -89,7 +81,40 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// --- 3. 헬퍼 함수들 (GAS 코드 -> Node.js 코드로 변환) ---
+// --- 3. 아침 6:50 자동 알림 (node-cron 사용) ---
+cron.schedule('50 6 * * *', async () => {
+  console.log("===== ⏰ 아침 6:50 자동 알림 시작 =====");
+  try {
+    const kstNow = getKSTDate(new Date());
+    const forecastDate = kstNow.stringDate;
+    
+    const extractedData = await readDataFromSheet("0700", "7시", forecastDate);
+    if (!extractedData) {
+      console.log("시트 읽기 실패. 공용 알림 중단.");
+      return;
+    }
+
+    const publicChannels = await readSubscribers("Public");
+    if (!publicChannels || publicChannels.length === 0) {
+      console.log("공용 알림 채널이 없습니다.");
+      return;
+    }
+
+    extractedData.locationName = publicChannels[0].locationName; // '서울'
+    const finalMessage = await generatePolicyMessage(extractedData);
+
+    for (const channel of publicChannels) {
+      await sendChannelMessage(channel.channelId, finalMessage, channel.name);
+    }
+  } catch (e) {
+    console.error("아침 자동 알림 오류:", e);
+  }
+}, {
+  timezone: "Asia/Seoul"
+});
+
+
+// --- 4. 헬퍼 함수들 (GAS 코드 -> Node.js 코드로 변환) ---
 
 function getKSTDate(date) {
   const kst = new Date(date.getTime() + (9 * 60 * 60 * 1000));
@@ -101,7 +126,7 @@ function getKSTDate(date) {
   return { stringDate: `${year}${month}${day}`, hour, minute };
 }
 
-function getApiTime(mode = "OnDemand") { // 'OnDemand' 또는 'Morning'
+function getApiTime(mode = "OnDemand") {
   const now = new Date();
   const { stringDate, hour, minute } = getKSTDate(now);
   
@@ -121,9 +146,7 @@ function getApiTime(mode = "OnDemand") { // 'OnDemand' 또는 'Morning'
     baseTime = targetHour.toString().padStart(2, '0') + '00';
   }
   
-  let forecastTime = "";
-  let forecastHourForPrompt = "";
-  let forecastDate = stringDate;
+  let forecastTime = "", forecastHourForPrompt = "", forecastDate = stringDate;
 
   if (mode === "Morning") {
     forecastTime = "0700";
@@ -143,6 +166,7 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
   try {
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
+    await sheet.loadHeaderRow(); // 헤더 강제 로드
     const rows = await sheet.getRows(); 
 
     const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
@@ -235,12 +259,51 @@ async function getUserLocation(userId) {
   try {
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
+    await sheet.loadHeaderRow(); // 헤더 강제 로드
     const rows = await sheet.getRows();
     const user = rows.find(row => row.get('Type') === 'Private' && row.get('ID') == userId);
     return user ? user.get('LocationName') : null;
   } catch (e) {
     console.error("구독자 시트(UserID) 읽기 오류:", e);
     return null;
+  }
+}
+
+async function readSubscribers(type) {
+  try {
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
+    await sheet.loadHeaderRow(); // 헤더 강제 로드
+    const rows = await sheet.getRows();
+    
+    const subscribers = [];
+    for (const row of rows) {
+      const rowType = row.get('Type');
+      const id = row.get('ID');
+      const locationName = row.get('LocationName');
+
+      if (type === "Public" && rowType === "Public" && id) {
+        subscribers.push({ name: `Channel-${id}`, channelId: id, locationName: locationName });
+      }
+    }
+    return subscribers;
+  } catch (e) {
+    console.error("구독자 시트(Public) 읽기 오류:", e);
+    return null;
+  }
+}
+
+async function sendChannelMessage(channelId, messageText, channelName) {
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (channel) {
+      await channel.send(messageText);
+      console.log(`[${channelName}] 채널에 메시지 전송 성공.`);
+    } else {
+      console.log(`[${channelName}] 채널을 찾을 수 없습니다.`);
+    }
+  } catch (e) {
+    console.error(`[${channelName}] 채널 전송 실패:`, e);
   }
 }
 
