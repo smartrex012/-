@@ -366,7 +366,7 @@ async function generatePolicyMessage(data) {
 
 async function getUserLocation(userId) {
   try {
-    // 🟡 [수정] (4) doc.loadInfo() 제거 (이미 로드됨)
+    await doc.loadInfo(); // ⚠️ [수정] 403 오류 해결을 위해 loadInfo() 다시 추가
     const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
     await sheet.loadHeaderRow(); 
     const rows = await sheet.getRows();
