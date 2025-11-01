@@ -3,7 +3,6 @@ const { Client, GatewayIntentBits, REST, Routes } = require('discord.js');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const axios = require('axios');
-const cron = require('node-cron');
 
 // --- 0. 설정 (Secrets에서 불러오기) ---
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -12,12 +11,12 @@ const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const SUBSCRIBER_SHEET_NAME = "Subscribers";
 const FORECAST_SHEET_NAME = "ForecastData";
 const CLIENT_ID = process.env.CLIENT_ID; // ⚠️ Secrets에 봇의 Application ID 저장 필수
+const GOOGLE_SERVICE_ACCOUNT_CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_CREDS);
 
 // Google Sheets 인증
-const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_CREDS);
 const serviceAccountAuth = new JWT({
-  email: creds.client_email,
-  key: creds.private_key,
+  email: GOOGLE_SERVICE_ACCOUNT_CREDS.client_email,
+  key: GOOGLE_SERVICE_ACCOUNT_CREDS.private_key,
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
@@ -31,9 +30,7 @@ const commands = [
     description: '현재 위치(서울)의 최신 날씨와 행동 지침을 DM으로 받습니다.',
   },
 ];
-
 const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
-
 (async () => {
   try {
     console.log('(/) 슬래시 명령어 등록 시작...');
@@ -92,45 +89,7 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// --- 3. 아침 6:50 자동 알림 (GAS 트리거 대체) ---
-cron.schedule('50 6 * * *', async () => {
-  console.log("===== ⏰ 아침 6:50 자동 알림 시작 =====");
-  try {
-    const kstNow = getKSTDate(new Date());
-    const forecastDate = kstNow.stringDate;
-    
-    // 1. 아침 7시 예보 데이터 읽기
-    const extractedData = await readDataFromSheet("0700", "7시", forecastDate);
-
-    if (!extractedData) {
-      console.log("시트 읽기 실패. 공용 알림 중단.");
-      return;
-    }
-
-    // 2. 공용 채널 목록 읽기
-    const publicChannels = await readSubscribers("Public");
-    if (!publicChannels || publicChannels.length === 0) {
-      console.log("공용 알림 채널이 없습니다.");
-      return;
-    }
-
-    // 3. 메시지 생성 (모든 채널이 동일한 '서울' 위치 사용)
-    extractedData.locationName = publicChannels[0].locationName; 
-    const finalMessage = await generatePolicyMessage(extractedData);
-
-    // 4. 모든 공용 채널에 전송
-    for (const channel of publicChannels) {
-      await sendChannelMessage(channel.channelId, finalMessage, channel.name);
-    }
-  } catch (e) {
-    console.error("아침 자동 알림 오류:", e);
-  }
-}, {
-  timezone: "Asia/Seoul"
-});
-
-
-// --- 4. 헬퍼 함수들 (GAS 코드 -> Node.js 코드로 변환) ---
+// --- 3. 헬퍼 함수들 (GAS 코드 -> Node.js 코드로 변환) ---
 
 function getKSTDate(date) {
   const kst = new Date(date.getTime() + (9 * 60 * 60 * 1000));
@@ -146,7 +105,6 @@ function getApiTime(mode = "OnDemand") { // 'OnDemand' 또는 'Morning'
   const now = new Date();
   const { stringDate, hour, minute } = getKSTDate(now);
   
-  // (getApiTime 로직은 GAS와 동일)
   const 발표시각_리스트 = [2, 5, 8, 11, 14, 17, 20, 23];
   let baseDate = stringDate;
   let baseTime = "";
@@ -185,7 +143,7 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
   try {
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
-    const rows = await sheet.getRows(); // 시트 데이터 읽기
+    const rows = await sheet.getRows(); 
 
     const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
     let dailyTemps = [];
@@ -278,47 +236,11 @@ async function getUserLocation(userId) {
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
     const rows = await sheet.getRows();
-    const user = rows.find(row => row.get('UserID') == userId);
+    const user = rows.find(row => row.get('Type') === 'Private' && row.get('ID') == userId);
     return user ? user.get('LocationName') : null;
   } catch (e) {
     console.error("구독자 시트(UserID) 읽기 오류:", e);
     return null;
-  }
-}
-
-async function readSubscribers(type) {
-  try {
-    await doc.loadInfo();
-    const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
-    const rows = await sheet.getRows();
-    
-    const subscribers = [];
-    for (const row of rows) {
-      const channelId = row.get('PublicChannelID'); // ⚠️ 시트 열 이름
-      const locationName = row.get('LocationName');
-
-      if (type === "Public" && channelId) {
-        subscribers.push({ name: `Channel-${channelId}`, channelId: channelId, locationName: locationName });
-      }
-    }
-    return subscribers;
-  } catch (e) {
-    console.error("구독자 시트(Public) 읽기 오류:", e);
-    return null;
-  }
-}
-
-async function sendChannelMessage(channelId, messageText, channelName) {
-  try {
-    const channel = await client.channels.fetch(channelId);
-    if (channel) {
-      await channel.send(messageText);
-      console.log(`[${channelName}] 채널에 메시지 전송 성공.`);
-    } else {
-      console.log(`[${channelName}] 채널을 찾을 수 없습니다.`);
-    }
-  } catch (e) {
-    console.error(`[${channelName}] 채널 전송 실패:`, e);
   }
 }
 
