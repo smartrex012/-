@@ -320,12 +320,13 @@ http.createServer((req, res) => {
 client.login(BOT_TOKEN);
 // index.js 파일 맨 아래에 추가
 
+// ... (client.login(BOT_TOKEN); 윗부분 생략) ...
+
 // --- 5. ⚠️ [신규] UptimeRobot 핑(Ping)을 받기 위한 웹 서버 ---
-// Render가 포트를 감지하고 'Web Service'를 계속 실행하도록 합니다.
-const http = require('http');
+// (맨 위의 require('http')를 사용하므로 여기서는 선언을 삭제합니다.)
 http.createServer((req, res) => {
   res.writeHead(200, {'Content-Type': 'text/plain'});
   res.end('Discord bot is alive and listening for pings!');
-}).listen(10000); // Render는 10000번 포트를 자동으로 감지합니다.
+}).listen(10000); 
 
 client.login(BOT_TOKEN);
