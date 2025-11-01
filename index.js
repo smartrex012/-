@@ -362,13 +362,18 @@ async function generatePolicyMessage(data) {
   }
 }
 
+// index.js 파일 내의 'getUserLocation' 함수를 교체하세요.
+
 async function getUserLocation(userId) {
   try {
-    await doc.loadInfo();
+    // 🟡 [수정] (4) doc.loadInfo() 제거 (이미 로드됨)
     const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
     await sheet.loadHeaderRow(); 
     const rows = await sheet.getRows();
-    const user = rows.find(row => row.get('Type') === 'Private' && row.get('ID') == userId);
+    
+    // ⚠️ [수정] .toString()을 추가하여 숫자/문자열 문제를 강제로 해결
+    const user = rows.find(row => row.get('Type') === 'Private' && row.get('ID').toString() == userId.toString());
+    
     return user ? user.get('LocationName') : null;
   } catch (e) {
     console.error("구독자 시트(UserID) 읽기 오류:", e);
