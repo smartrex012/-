@@ -276,7 +276,7 @@ async function updateForecastData(baseDate, baseTime) {
   const NX_COORD = 60, NY_COORD = 127; // 서울 기준
   const apiUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=${encodedKey}` +
                  `&base_date=${baseDate}&base_time=${baseTime}&nx=${NX_COORD}&ny=${NY_COORD}` +
-                 `&dataType=JSON&numOfRows=300&pageNo=1`; 
+                 `&dataType=JSON&numOfRows=150&pageNo=1`; 
   
   for (let i = 0; i < 10; i++) {
     try {
