@@ -4,15 +4,14 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const axios = require('axios');
 const cron = require('node-cron');
+const http = require('http'); // ⚠️ [필수] UptimeRobot 핑(Ping)을 받기 위한 모듈
 
-// --- 0. 설정 (Koyeb Secrets에서 불러오기) ---
+// --- 0. 설정 (Render Secrets에서 불러오기) ---
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const DATA_API_KEY = process.env.DATA_API_KEY;
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const SUBSCRIBER_SHEET_NAME = "Subscribers";
 const FORECAST_SHEET_NAME = "ForecastData";
-const META_SHEET_NAME = "Metadata";
 const CLIENT_ID = process.env.CLIENT_ID; // ⚠️ Secrets에 봇의 Application ID 저장 필수
 const GOOGLE_SERVICE_ACCOUNT_CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_CREDS);
 
@@ -45,7 +44,7 @@ const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
 })();
 
 // --- 2. 봇 로그인 및 명령어 리스너 (빠른 작업) ---
-client.once('clientReady', () => { // 'ready' -> 'clientReady'로 수정
+client.once('clientReady', () => { 
   console.log(`✅ ${client.user.tag} 봇이 로그인했습니다.`);
 });
 
@@ -83,29 +82,7 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// --- 3. '일꾼' 작업 정의 (느린 작업) ---
-
-// 작업 1: 3시간마다 기상청 API 데이터 업데이트
-cron.schedule('10 */3 * * *', async () => { // 매 3시간 10분마다
-  console.log("⏰ (일꾼) API 데이터 업데이트를 시작합니다...");
-  
-  const { baseDate, baseTime } = getApiTime("Worker");
-  const isDataFresh = await checkDataFreshness(baseTime);
-
-  if (!isDataFresh) {
-    console.log("데이터가 오래되었습니다. 기상청 API에서 새 데이터를 가져옵니다...");
-    const updateSuccess = await updateForecastData(baseDate, baseTime);
-    if (updateSuccess) {
-      await updateMetadata(baseTime);
-    }
-  } else {
-    console.log("데이터가 이미 최신입니다. 업데이트를 건너뜁니다.");
-  }
-}, {
-  timezone: "Asia/Seoul"
-});
-
-// 작업 2: 매일 아침 6:50분 공용 채널에 알림
+// --- 3. 아침 6:50 자동 알림 (node-cron 사용) ---
 cron.schedule('50 6 * * *', async () => {
   console.log("===== ⏰ (일꾼) 아침 6:50 자동 알림 시작 =====");
   try {
@@ -175,7 +152,7 @@ function getApiTime(mode = "OnDemand") {
   if (mode === "Morning") {
     forecastTime = "0700";
     forecastHourForPrompt = "7시";
-  } else { // OnDemand or Worker
+  } else { // OnDemand
     const nextHourDate = new Date(now.getTime() + (60 * 60 * 1000));
     const nextKST = getKSTDate(nextHourDate);
     forecastTime = nextKST.hour.toString().padStart(2, '0') + '00';
@@ -186,46 +163,13 @@ function getApiTime(mode = "OnDemand") {
   return { baseDate, baseTime, forecastTime, forecastHourForPrompt, forecastDate };
 }
 
-async function checkDataFreshness(currentBaseTime) {
-  try {
-    await doc.loadInfo();
-    const sheet = doc.sheetsByTitle[META_SHEET_NAME];
-    if (!sheet) {
-        console.log("Metadata 시트가 없습니다. 새로 생성합니다.");
-        return false;
-    }
-    await sheet.loadCells('B1');
-    const storedBaseTime = sheet.getCellByA1('B1').value;
-    return storedBaseTime == currentBaseTime;
-  } catch (e) {
-    console.error("메타데이터 확인 오류 (처음 실행일 수 있음):", e.message);
-    return false;
-  }
-}
-
-async function updateMetadata(currentBaseTime) {
-  try {
-    await doc.loadInfo();
-    let sheet = doc.sheetsByTitle[META_SHEET_NAME];
-    if (!sheet) {
-      sheet = await doc.addSheet({ title: META_SHEET_NAME });
-    }
-    await sheet.loadCells('A1:B1');
-    sheet.getCellByA1('A1').value = "LastUpdateBaseTime";
-    sheet.getCellByA1('B1').value = currentBaseTime;
-    await sheet.saveUpdatedCells();
-  } catch (e) {
-    console.error("메타데이터 쓰기 오류:", e.message);
-  }
-}
-
 async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDate) {
   try {
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
     if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
-    await sheet.loadHeaderRow(); // 헤더 강제 로드
+    await sheet.loadHeaderRow(); 
     const rows = await sheet.getRows(); 
 
     const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
@@ -271,56 +215,6 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     console.error("Google Sheet 읽기 오류:", e);
     return null;
   }
-}
-
-async function updateForecastData(baseDate, baseTime) {
-  const encodedKey = encodeURIComponent(DATA_API_KEY);
-  const NX_COORD = 60, NY_COORD = 127; // 서울 기준
-  const apiUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=${encodedKey}` +
-                 `&base_date=${baseDate}&base_time=${baseTime}&nx=${NX_COORD}&ny=${NY_COORD}` +
-                 `&dataType=JSON&numOfRows=150&pageNo=1`; 
-  
-  for (let i = 0; i < 10; i++) {
-    try {
-      console.log(`API 데이터 업데이트 시도 (${i + 1}/10)...`);
-      const response = await axios.get(apiUrl, { timeout: 300000 }); // 5분 타임아웃
-      const dataObject = response.data;
-
-      if (dataObject.response.header.resultCode !== "00") {
-        throw new Error(`API가 오류를 반환했습니다: ${dataObject.response.header.resultMsg}`);
-      }
-      const items = dataObject.response.body.items.item; 
-      if (!items) throw new Error("API 응답에 유효한 데이터 항목이 없습니다.");
-      
-      const dataToSave = items.map(item => ({
-        fcstDate: item.fcstDate, 
-        fcstTime: item.fcstTime,
-        category: item.category,
-        fcstValue: item.fcstValue
-      }));
-
-      await doc.loadInfo();
-      let sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
-      if (!sheet) {
-        sheet = await doc.addSheet({ title: FORECAST_SHEET_NAME, headerValues: ['fcstDate', 'fcstTime', 'category', 'fcstValue'] });
-      } else {
-         await sheet.clear(); 
-         await sheet.setHeaderRow(['fcstDate', 'fcstTime', 'category', 'fcstValue']);
-      }
-      await sheet.addRows(dataToSave); 
-
-      console.log(`✅ 데이터 업데이트 성공! ${dataToSave.length}개 행이 저장되었습니다.`);
-      return true; // 성공
-    } catch (e) {
-      console.error(`시도 ${i + 1} 실패:`, e.message);
-      if (i < 9) {
-        console.log("10초 후 재시도합니다...");
-        await new Promise(resolve => setTimeout(resolve, 10000)); 
-      }
-    }
-  }
-  console.log("API 호출에 최종 실패했습니다.");
-  return false; // 실패
 }
 
 async function generatePolicyMessage(data) {
@@ -404,7 +298,6 @@ async function readSubscribers(type) {
 
 async function sendChannelMessage(channelId, messageText, channelName) {
   try {
-    // 봇이 로그인되어 client.channels.fetch를 사용할 수 있어야 함
     const channel = await client.channels.fetch(channelId);
     if (channel) {
       await channel.send(messageText);
@@ -416,5 +309,12 @@ async function sendChannelMessage(channelId, messageText, channelName) {
     console.error(`[${channelName}] 채널 전송 실패:`, e);
   }
 }
+
+// --- 5. ⚠️ [신규] UptimeRobot 핑(Ping)을 받기 위한 웹 서버 ---
+// Render가 포트를 감지하고 'Web Service'를 계속 실행하도록 합니다.
+http.createServer((req, res) => {
+  res.writeHead(200, {'Content-Type': 'text/plain'});
+  res.end('Discord bot is alive and listening for pings!');
+}).listen(10000); // Render는 10000번 포트를 자동으로 감지합니다.
 
 client.login(BOT_TOKEN);
