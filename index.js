@@ -50,7 +50,7 @@ client.once('clientReady', () => {
 client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand() || interaction.commandName !== 'weather') return;
 
-  await interaction.deferReply({ ephemeral: true }); 
+  await interaction.deferReply({ flags: 64 }); 
 
   try {
     const userId = interaction.user.id;
