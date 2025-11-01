@@ -193,7 +193,7 @@ function getApiTime(mode = "OnDemand") {
 // =========================================================================
 async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDate) {
   try {
-    await doc.loadInfo(); 
+    await doc.loadInfo(); // ⚠️ [수정] 403 오류 해결을 위해 loadInfo() 다시 추가
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
     if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
@@ -203,14 +203,14 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
     let dailyTemps = [];
 
-    // ⚠️ [수정] "0500"(String)을 500(Number)으로 변환하여 비교 준비
+    // ⚠️ [수정] "0600"(String)을 600(Number)으로 변환하여 비교 준비
     const targetTimeNumber = parseInt(forecastTime, 10); 
 
     for (const row of rows) {
       // (시트 열 순서: [0]fcstDate, [1]fcstTime, [2]category, [3]fcstValue)
-      // ⚠️ row.get('fcstTime')은 Google Sheet에서 500 (Number)으로 읽어옵니다.
+      // ⚠️ row.get('fcstTime')은 Google Sheet에서 600 (Number)으로 읽어옵니다.
       const date = row.get('fcstDate');
-      const time = row.get('fcstTime'); 
+      const time = row.get('fcstTime'); // 이것은 숫자(Number) 600입니다.
       const category = row.get('category');
       const value = row.get('fcstValue');
 
@@ -229,6 +229,31 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
         }
       }
     }
+    
+    if (extracted.temp === null) { 
+      // [수정] 로그에 숫자 비교가 보이도록 추가
+      throw new Error(`Sheet에서 ${forecastTime}시(숫자: ${targetTimeNumber}) 예보 데이터를 찾을 수 없습니다.`); 
+    }
+    
+    if (dailyTemps.length > 0) {
+      extracted.tmx = Math.max(...dailyTemps);
+      extracted.tmn = Math.min(...dailyTemps);
+      extracted.tempRange = extracted.tmx - extracted.tmn;
+    }
+    if (extracted.temp !== null && extracted.wsd !== null) {
+      const T = extracted.temp, V_kmh = extracted.wsd * 3.6; 
+      if (T <= 10 && V_kmh >= 4.8) {
+        const V16 = Math.pow(V_kmh, 0.16);
+        extracted.windChill = (13.12 + (0.6215 * T) - (11.37 * V16) + (0.3965 * T * V16)).toFixed(1);
+      }
+    }
+    console.log("Google Sheet에서 데이터 읽기 성공!");
+    return extracted;
+  } catch (e) {
+    console.error("Google Sheet 읽기 오류:", e);
+    return null;
+  }
+}
     
     if (extracted.temp === null) { 
       // [수정] 로그에 숫자 비교가 보이도록 추가
