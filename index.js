@@ -186,7 +186,7 @@ function getApiTime(mode = "OnDemand") {
 
 async function checkDataFreshness(currentBaseTime) {
   try {
-    await doc.loadInfo();
+    await doc.loadInfo(); // ⚠️ [수정] loadInfo() 추가
     const sheet = doc.sheetsByTitle[META_SHEET_NAME];
     if (!sheet) {
         console.log("Metadata 시트가 없습니다. 새로 생성합니다.");
@@ -203,7 +203,7 @@ async function checkDataFreshness(currentBaseTime) {
 
 async function updateMetadata(currentBaseTime) {
   try {
-    await doc.loadInfo();
+    await doc.loadInfo(); // ⚠️ [수정] loadInfo() 추가
     let sheet = doc.sheetsByTitle[META_SHEET_NAME];
     if (!sheet) {
       sheet = await doc.addSheet({ title: META_SHEET_NAME });
@@ -219,7 +219,7 @@ async function updateMetadata(currentBaseTime) {
 
 async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDate) {
   try {
-    await doc.loadInfo();
+    await doc.loadInfo(); // ⚠️ [수정] loadInfo() 추가
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
     if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
@@ -297,7 +297,7 @@ async function updateForecastData(baseDate, baseTime) {
         fcstValue: item.fcstValue
       }));
 
-      await doc.loadInfo();
+      await doc.loadInfo(); // ⚠️ [수정] loadInfo() 추가
       let sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
       if (!sheet) {
         sheet = await doc.addSheet({ title: FORECAST_SHEET_NAME, headerValues: ['fcstDate', 'fcstTime', 'category', 'fcstValue'] });
@@ -364,6 +364,7 @@ async function generatePolicyMessage(data) {
 
 // index.js 파일 내의 'getUserLocation' 함수를 교체하세요.
 
+// 헬퍼 함수: getUserLocation
 async function getUserLocation(userId) {
   try {
     await doc.loadInfo(); // ⚠️ [수정] 403 오류 해결을 위해 loadInfo() 다시 추가
@@ -383,7 +384,7 @@ async function getUserLocation(userId) {
 
 async function readSubscribers(type) {
   try {
-    await doc.loadInfo();
+    await doc.loadInfo(); // ⚠️ [수정] loadInfo() 추가
     const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
     await sheet.loadHeaderRow();
     const rows = await sheet.getRows();
