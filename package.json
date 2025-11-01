@@ -4,8 +4,7 @@
   "description": "Weather bot using discord.js and Google Sheets",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js",
-    "update": "node updateSheet.js"
+    "start": "node bot.js"
   },
   "dependencies": {
     "axios": "^1.7.2",
