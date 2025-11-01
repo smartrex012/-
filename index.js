@@ -79,4 +79,8 @@ client.on('interactionCreate', async interaction => {
     await interaction.editReply(`✅ ${userName}님의 DM으로 ${extractedData.forecastHour} 날씨 정보를 보냈어요!`);
 
   } catch (e) {
-    console.error("'/weather' 처리
+    // ⚠️ [수정 완료] SyntaxError가 발생한 부분을 올바르게 수정합니다.
+    console.error("'/weather' 처리 오류:", e); 
+    await interaction.editReply("🚨 봇 실행 중 오류가 발생했습니다.");
+  }
+});
