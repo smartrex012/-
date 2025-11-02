@@ -61,71 +61,89 @@ client.once('clientReady', () => {
 });
 
 client.on(Events.InteractionCreate, async interaction => {
-  // ⚠️ [수정] 'isCommand' -> 'isChatInputCommand'
-  if (!interaction.isChatInputCommand() || interaction.commandName !== 'weather') return;
+  if (!interaction.isChatInputCommand() || interaction.commandName !== 'weather') return;
 
-  // ⚠️ [수정] 'ephemeral: true' -> 'flags: 64'로 변경 (경고 해결)
-  await interaction.deferReply({ flags: 64 }); // 64 = 나에게만 보이는 로딩
+  await interaction.deferReply({ flags: 64 }); 
 
-  try {
-    const userId = interaction.user.id;
-    const userName = interaction.user.username;
+  try {
+    const userId = interaction.user.id;
+    const userName = interaction.user.username;
 
-    const userLocation = await getUserLocation(userId);
-    if (!userLocation) {
-      await interaction.editReply("🚨 구독자 목록(`Subscribers` 시트)에 등록되지 않은 사용자입니다.");
-      return;
+    const userInfo = await getUserInfo(userId); // ⚠️ [수정] getUserInfo 호출
+    if (!userInfo || !userInfo.nx || !userInfo.ny) { // ⚠️ [수정] nx, ny 확인
+      await interaction.editReply("🚨 구독자 목록(`Subscribers` 시트)에 등록되지 않았거나, 위치(NX/NY) 정보가 없습니다. (Google Form으로 등록했는지 확인하세요)");
+      return;
+    }
+
+    const times = getApiTime("OnDemand"); 
+    // ⚠️ [수정] readDataFromSheet에 userInfo.nx, userInfo.ny 전달
+    const extractedData = await readDataFromSheet(times.forecastTime, times.forecastHourForPrompt, times.forecastDate, userInfo.nx, userInfo.ny);
+    
+    if (!extractedData) {
+      await interaction.editReply("🚨 Google Sheet에 아직 데이터가 없거나 읽기에 실패했습니다. (백그라운드 '일꾼'이 아직 데이터를 저장하지 못했거나, 해당 지역 데이터가 없습니다.)");
+      return;
+    }
+    
+    extractedData.locationName = userInfo.locationName; // ⚠️ [수정] userInfo에서 이름 사용
+    const finalMessage = await generatePolicyMessage(extractedData);
+    await interaction.user.send(finalMessage);
+    await interaction.editReply(`✅ ${userName}님의 DM으로 [${userInfo.locationName}] 날씨 정보를 보냈어요!`);
+
+  } catch (e) {
+    console.error("'/weather' 처리 오류:", e);
+    // 봇이 응답하기 전에 죽는 것을 방지
+    if (interaction.deferred || interaction.replied) {
+        await interaction.editReply("🚨 봇 실행 중 오류가 발생했습니다.");
+    } else {
+        await interaction.reply({ content: "🚨 봇 실행 중 오류가 발생했습니다.", ephemeral: true });
     }
-
-    const times = getApiTime("OnDemand"); 
-    const extractedData = await readDataFromSheet(times.forecastTime, times.forecastHourForPrompt, times.forecastDate);
-    
-    if (!extractedData) {
-      await interaction.editReply("🚨 Google Sheet에 아직 데이터가 없거나 읽기에 실패했습니다. (백그라운드 '일꾼'이 아직 데이터를 저장하지 못했습니다.)");
-      return;
-    }
-    
-    extractedData.locationName = userLocation;
-    const finalMessage = await generatePolicyMessage(extractedData);
-    await interaction.user.send(finalMessage);
-    await interaction.editReply(`✅ ${userName}님의 DM으로 ${extractedData.forecastHour} 날씨 정보를 보냈어요!`);
-
-  } catch (e) {
-    console.error("'/weather' 처리 오류:", e);
-    await interaction.editReply("🚨 봇 실행 중 오류가 발생했습니다.");
-  }
+  }
 });
+
+// [ 📄 index.js ]
 
 // --- 3. 아침 6:50 자동 알림 (node-cron 사용) ---
 cron.schedule('50 6 * * *', async () => {
-  console.log("===== ⏰ (일꾼) 아침 6:50 자동 알림 시작 =====");
-  try {
-    const kstNow = getKSTDate(new Date());
-    const forecastDate = kstNow.stringDate;
-    
-    const extractedData = await readDataFromSheet("0700", "7시", forecastDate);
-    if (!extractedData) {
-      console.log("시트 읽기 실패. 공용 알림 중단.");
-      return;
-    }
+  console.log("===== ⏰ (일꾼) 아침 6:50 자동 알림 시작 =====");
+  try {
+    const kstNow = getKSTDate(new Date());
+    const forecastDate = kstNow.stringDate;
+    
+    // ⚠️ [수정] 'Public' 타입의 모든 구독자 (채널ID, 위치, NX, NY) 목록을 가져옵니다.
+    const publicChannels = await readSubscribers("Public");
+    if (!publicChannels || publicChannels.length === 0) {
+      console.log("공용 알림 채널이 없습니다.");
+      return;
+    }
 
-    const publicChannels = await readSubscribers("Public");
-    if (!publicChannels || publicChannels.length === 0) {
-      console.log("공용 알림 채널이 없습니다.");
-      return;
-    }
+    console.log(`총 ${publicChannels.length}개의 공용 채널에 알림을 보냅니다.`);
 
-    extractedData.locationName = publicChannels[0].locationName; // '서울'
-    const finalMessage = await generatePolicyMessage(extractedData);
+    // ⚠️ [수정] 각 채널별로 순회하며, 해당 위치의 날씨를 가져와 전송합니다.
+    for (const channel of publicChannels) {
+      try {
+        console.log(`채널 [${channel.name}]의 날씨(${channel.locationName}, ${channel.nx}, ${channel.ny})를 가져옵니다...`);
+        // 7시 예보를, 해당 채널의 NX/NY로 조회
+        const extractedData = await readDataFromSheet("0700", "7시", forecastDate, channel.nx, channel.ny);
+    
+        if (!extractedData) {
+          console.log(`[${channel.name}] 시트 읽기 실패. 이 채널은 건너뜁니다.`);
+          continue; // 다음 채널로 이동
+        }
 
-    for (const channel of publicChannels) {
-      await sendChannelMessage(channel.channelId, finalMessage, channel.name);
-    }
-  } catch (e) {
-    console.error("아침 자동 알림 오류:", e);
-  }
+        extractedData.locationName = channel.locationName; // 채널에 등록된 위치 이름 사용
+        const finalMessage = await generatePolicyMessage(extractedData);
+
+        await sendChannelMessage(channel.channelId, finalMessage, channel.name);
+      } catch (e) {
+        console.error(`채널 [${channel.name}] 처리 중 오류 발생:`, e);
+      }
+    } // for 루프 끝
+
+  } catch (e) {
+    console.error("아침 자동 알림 전체 오류:", e);
+  }
 }, {
-  timezone: "Asia/Seoul"
+  timezone: "Asia/Seoul"
 });
 
 
@@ -190,52 +208,57 @@ function getApiTime(mode = "OnDemand") {
 }
 
 
-async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDate) {
+// ⚠️ [수정] nx, ny를 인자로 추가
+async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDate, userNx, userNy) {
   try { 
     await doc.loadInfo(); 
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
     if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
-    // ⚠️ [수정] getRows() 대신 loadCells()를 사용합니다.
-    // 1행(헤더)은 건너뛰고, 2행(index 1)부터 A:D 열의 데이터만 로드합니다.
+    // ⚠️ [수정] 1행(헤더)은 건너뛰고, A2:F(끝)까지 로드합니다. (6열)
     console.log("시트 셀 데이터 로드를 시작합니다...");
-    // A2:D(sheet.rowCount) 범위의 셀을 로드합니다.
     await sheet.loadCells({
         "startRowIndex": 1, // 2행부터 (0-based index)
         "endRowIndex": sheet.rowCount, // 시트의 마지막 행까지
         "startColumnIndex": 0, // A열부터
-        "endColumnIndex": 4 // D열까지
+        "endRowIndex": 6 // ⚠️ F열(index 5)까지 (A=0, B=1, C=2, D=3, E=4, F=5)
     });
-    console.log(`총 ${sheet.rowCount - 1}개의 행 셀 데이터를 로드했습니다.`);
+    // console.log(`총 ${sheet.rowCount - 1}개의 행 셀 데이터를 로드했습니다.`); // (로그가 너무 길어질 수 있으니 주석 처리)
 
     const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
-    let dailyTemps = [];
+    let dailyTemps = []; // 해당 지역/날짜의 일교차 계산용
 
-    console.log(`[목표] 날짜: "${forecastDate}", 시간: "${forecastTime}"`);
+    // ⚠️ [추가] userNx, userNy를 문자열로 변환 (비교용)
+    const targetNx = (userNx ?? "").toString().trim();
+    const targetNy = (userNy ?? "").toString().trim();
+
+    console.log(`[목표] 날짜: "${forecastDate}", 시간: "${forecastTime}", NX: ${targetNx}, NY: ${targetNy}`);
     let foundMatch = false; 
 
-    // ⚠️ [수정] for...of rows 대신, for 루프를 사용해 셀을 직접 순회합니다.
-    // loadCells()는 0-based index를 쓰므로, r=1이 시트의 '2행'을 의미합니다.
+    // ⚠️ [수정] F열(index 5)까지 읽도록 수정
     for (let r = 1; r < sheet.rowCount; r++) {
-        // .getCell(rowIndex, colIndex)로 셀 객체를 가져옵니다.
-        const dateCell = sheet.getCell(r, 0);      // (r행, A열)
-        const timeCell = sheet.getCell(r, 1);      // (r행, B열)
-        const categoryCell = sheet.getCell(r, 2);  // (r행, C열)
-        const valueCell = sheet.getCell(r, 3);     // (r행, D열)
+        const date = sheet.getCell(r, 0).value;      // A열 (fcstDate)
+        const time = sheet.getCell(r, 1).value;      // B열 (fcstTime)
+        const category = sheet.getCell(r, 2).value;  // C열 (category)
+        const value = sheet.getCell(r, 3).value;     // D열 (fcstValue)
+        const nx = sheet.getCell(r, 4).value;        // ⚠️ E열 (NX)
+        const ny = sheet.getCell(r, 5).value;        // ⚠️ F열 (NY)
 
-      // ⚠️ [수정] .get() 대신 .value 속성을 사용합니다.
-      const date = dateCell.value;
-      const time = timeCell.value;
-      const category = categoryCell.value;
-      const value = valueCell.value;
-
-      // (이하 데이터 처리 로직은 동일)
       const dateFromSheet = (date ?? "").toString().replace(/,/g, '').trim();
       const timeFromSheet = (time ?? "").toString().replace(/,/g, '').trim();
+      // ⚠️ [추가] NX, NY 값도 처리
+      const nxFromSheet = (nx ?? "").toString().trim();
+      const nyFromSheet = (ny ?? "").toString().trim();
 
-      if (dateFromSheet == forecastDate) {
-        if (category === "TMP") dailyTemps.push(parseFloat(value));
+      // ⚠️ [수정] NX, NY가 일치하는 데이터만 찾도록 필터링 강화
+      if (dateFromSheet == forecastDate && nxFromSheet == targetNx && nyFromSheet == targetNy) {
         
+        if (category === "TMP") {
+          // 일교차 계산을 위해 해당 날짜/지역의 모든 기온을 수집
+          dailyTemps.push(parseFloat(value));
+        }
+        
+        // ⚠️ [수정] 시간 일치 확인을 날짜/좌표 필터 안으로 이동
         if (timeFromSheet == forecastTime) {
             foundMatch = true; 
             switch (category) {
@@ -249,32 +272,17 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
       }
     } // for 루프 끝
 
-    // --- 디버깅 로그 ---
     if (foundMatch) {
         console.log(`[성공] "${forecastTime}"시 데이터를 찾았습니다.`);
     } else {
         console.log(`[실패] "${forecastTime}"시 데이터를 찾지 못했습니다.`);
-        
-        if (sheet.rowCount > 1) {
-            // 샘플을 마지막 행(r = sheet.rowCount - 1)에서 가져옵니다.
-            const sampleDateRaw = sheet.getCell(sheet.rowCount - 1, 0).value;
-            const sampleTimeRaw = sheet.getCell(sheet.rowCount - 1, 1).value;
-            console.log(`[샘플] 원본 Date: "${sampleDateRaw}" (Type: ${typeof sampleDateRaw})`);
-            console.log(`[샘플] 원본 Time: "${sampleTimeRaw}" (Type: ${typeof sampleTimeRaw})`);
-            
-            const sampleDateProcessed = (sampleDateRaw ?? "").toString().replace(/,/g, '').trim();
-            const sampleTimeProcessed = (sampleTimeRaw ?? "").toString().replace(/,/g, '').trim();
-            console.log(`[샘플] 처리된 Date: "${sampleDateProcessed}"`);
-            console.log(`[샘플] 처리된 Time: "${sampleTimeProcessed}"`);
-        }
     }
-    // --- 디버깅 로그 끝 ---
     
     if (extracted.temp === null) { 
-      throw new Error(`Sheet에서 ${forecastDate} / ${forecastTime}시 예보 데이터를 찾을 수 없습니다.`); 
+      throw new Error(`Sheet에서 ${forecastDate}/${forecastTime}시 (${targetNx}/${targetNy}) 예보를 찾을 수 없습니다.`); 
     }
     
-    // --- 기존 데이터 처리 로직 ---
+    // --- 일교차 및 체감온도 계산 (변경 없음) ---
     if (dailyTemps.length > 0) {
       extracted.tmx = Math.max(...dailyTemps);
       extracted.tmn = Math.min(...dailyTemps);
@@ -294,7 +302,7 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     console.error("Google Sheet 읽기 오류:", e);
     return null;
   }
-} // 함수 끝
+}
 
 async function generatePolicyMessage(data) {
   const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
@@ -361,47 +369,68 @@ async function generatePolicyMessage(data) {
   }
 }
 
-async function getUserLocation(userId) {
+async function getUserInfo(userId) { // ⚠️ 이름 변경: getUserLocation -> getUserInfo
   try {
-    await doc.loadInfo(); // ⚠️ [필수 추가] 시트 접근 전 loadInfo() 호출
+    await doc.loadInfo(); 
     const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
-    if (!sheet) throw new Error("Subscribers 시트를 찾을 수 없습니다."); // 방어 코드
+    if (!sheet) throw new Error("Subscribers 시트를 찾을 수 없습니다.");
 
-    await sheet.loadHeaderRow(); 
+    await sheet.loadHeaderRow(); // Headers: Type, ID, LocationName, NX, NY
     const rows = await sheet.getRows();
+    
     const user = rows.find(row => row.get('Type') === 'Private' && row.get('ID').toString() == userId.toString());
-    return user ? user.get('LocationName') : null;
+    
+    if (user) {
+      // ⚠️ [수정] 구독자 시트의 D열(NX), E열(NY) 헤더 값을 읽어옵니다.
+      return {
+        locationName: user.get('LocationName'),
+        nx: user.get('NX'),
+        ny: user.get('NY')
+      };
+    }
+    return null; // 사용자를 찾지 못함
+
   } catch (e) {
     console.error("구독자 시트(UserID) 읽기 오류:", e);
     return null;
   }
 }
 
+// [ 📄 index.js ]
+
 async function readSubscribers(type) {
   try {
-    await doc.loadInfo(); // ⚠️ [필수 추가] 시트 접근 전 loadInfo() 호출
+    await doc.loadInfo(); 
     const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
-    if (!sheet) throw new Error("Subscribers 시트를 찾을 수 없습니다."); // 방어 코드
+    if (!sheet) throw new Error("Subscribers 시트를 찾을 수 없습니다.");
 
     await sheet.loadHeaderRow();
     const rows = await sheet.getRows();
-// ... (이하 동일) ...
-    
-    const subscribers = [];
-    for (const row of rows) {
-      const rowType = row.get('Type');
-      const id = row.get('ID');
-      const locationName = row.get('LocationName');
+    
+    const subscribers = [];
+    for (const row of rows) {
+      const rowType = row.get('Type');
+      const id = row.get('ID');
+      const locationName = row.get('LocationName');
+      // ⚠️ [추가] NX, NY 값을 읽어옵니다.
+      const nx = row.get('NX');
+      const ny = row.get('NY');
 
-      if (type === "Public" && rowType === "Public" && id) {
-        subscribers.push({ name: `Channel-${id}`, channelId: id, locationName: locationName });
-      }
-    }
-    return subscribers;
-  } catch (e) {
-    console.error("구독자 시트(Public) 읽기 오류:", e);
-    return null;
-  }
+      if (type === "Public" && rowType === "Public" && id && nx && ny) { // ⚠️ nx, ny가 있는지 확인
+        subscribers.push({ 
+            name: `Channel-${id}`, 
+            channelId: id, 
+            locationName: locationName,
+            nx: nx,
+            ny: ny 
+        });
+      }
+    }
+    return subscribers;
+  } catch (e) {
+    console.error("구독자 시트(Public) 읽기 오류:", e);
+    return null;
+  }
 }
 
 async function sendChannelMessage(channelId, messageText, channelName) {
