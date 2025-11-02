@@ -159,54 +159,60 @@ function getKSTDate(date) {
   return { stringDate: `${year}${month}${day}`, hour, minute };
 }
 
-function getApiTime(mode = "OnDemand") { 
-  const now = new Date();
-  const kstNow = getKSTDate(now);
-  const hour = kstNow.hour;
-  const minute = kstNow.minute;
-  let baseDate = kstNow.stringDate;
-  
-  const 발표시각_리스트 = [2, 5, 8, 11, 14, 17, 20, 23];
-  let baseTime = "";
-  let targetHour = -1;
-  for (const h of 발표시각_리스트) {
-    if (hour < h || (hour === h && minute < 10)) { break; }
-    targetHour = h;
-  }
-  if (targetHour === -1) {
-    let yesterday = new Date(now.getTime() - (24 * 60 * 60 * 1000));
-    baseDate = getKSTDate(yesterday).stringDate;
-    baseTime = "2300";
-  } else {
-    baseTime = targetHour.toString().padStart(2, '0') + '00';
-  }
-  
-  let forecastTime = "";
-  let forecastHourForPrompt = "";
-  let forecastDate = kstNow.stringDate;
+// [ 📄 index.js ]
 
-  // ⚠️ [수정] 'OnDemand' 로직을 3시간 단위로 변경
-  if (mode === "Morning" && hour >= 6 && hour < 7) { 
-    forecastTime = "0700";
-    forecastHourForPrompt = "7시";
-  } else { // OnDemand or Worker
-    // 현재 시간(hour) 이후의 가장 가까운 3시간 단위 예보 시간을 찾음
-    const availableTimes = [0, 3, 6, 9, 12, 15, 18, 21];
-    let nextForecastHour = availableTimes.find(h => h > hour);
-    
-    if (!nextForecastHour) { // 21시 이후면 다음날 00시
-      nextForecastHour = 0;
-      let tomorrow = new Date(now.getTime() + (24 * 60 * 60 * 1000));
-      forecastDate = getKSTDate(tomorrow).stringDate;
-    }
-    
-    forecastTime = nextForecastHour.toString().padStart(2, '0') + '00';
-    forecastHourForPrompt = `${nextForecastHour}시`;
-  }
-  
-  return { baseDate, baseTime, forecastTime, forecastHourForPrompt, forecastDate };
+function getApiTime(mode = "OnDemand") { 
+  const now = new Date();
+  const kstNow = getKSTDate(now);
+  const hour = kstNow.hour;
+  // ⚠️ [삭제] minute 변수 불필요
+ // const minute = kstNow.minute; 
+  let baseDate = kstNow.stringDate;
+  
+  const 발표시각_리스트 = [2, 5, 8, 11, 14, 17, 20, 23];
+  let baseTime = "";
+  let targetHour = -1;
+
+  // ⚠️ [수정] 10분 딜레이 로직 (minute < 10)을 완전히 제거
+  for (const h of 발표시각_리스트) {
+    if (hour < h) { break; } 
+    targetHour = h;
+  }
+
+  if (targetHour === -1) { // 00:00 ~ 01:59 사이
+    let yesterday = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+    baseDate = getKSTDate(yesterday).stringDate;
+    baseTime = "2300";
+  } else {
+    baseTime = targetHour.toString().padStart(2, '0') + '00';
+  }
+  
+  // --- (이하 OnDemand/Morning 로직은 동일) ---
+  let forecastTime = "";
+  let forecastHourForPrompt = "";
+  let forecastDate = kstNow.stringDate;
+
+  if (mode === "Morning" && hour >= 6 && hour < 7) { 
+    forecastTime = "0700";
+    forecastHourForPrompt = "7시";
+  } else { // OnDemand or Worker
+    const availableTimes = [0, 3, 6, 9, 12, 15, 18, 21];
+    let nextForecastHour = availableTimes.find(h => h > hour);
+    
+    if (!nextForecastHour) { 
+      nextForecastHour = 0;
+      let tomorrow = new Date(now.getTime() + (24 * 60 * 60 * 1000));
+      forecastDate = getKSTDate(tomorrow).stringDate;
+    }
+    
+    forecastTime = nextForecastHour.toString().padStart(2, '0') + '00';
+    forecastHourForPrompt = `${nextForecastHour}시`;
+  }
+  
+  return { baseDate, baseTime, forecastTime, forecastHourForPrompt, forecastDate };
 }
 
+// [ 📄 index.js ]
 
 async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDate, userNx, userNy) {
   try { 
@@ -281,7 +287,7 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
       extracted.tempRange = extracted.tmx - extracted.tmn;
     }
 
-    // ⚠️ [수정] 오타 'a'를 삭제했습니다.
+    // ⚠️ [수정] 오타 'a'가 확실히 제거된 라인입니다.
     if (extracted.temp !== null && extracted.wsd !== null) {
       const T = extracted.temp, V_kmh = extracted.wsd * 3.6; // 👈 'a' 삭제됨
       if (T <= 10 && V_kmh >= 4.8) {
