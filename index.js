@@ -191,15 +191,22 @@ function getApiTime(mode = "OnDemand") {
 
 
 async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDate) {
-  // ⚠️ [수정] try...catch 블록이 여기서 시작됩니다.
   try { 
     await doc.loadInfo(); 
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
     if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
-    await sheet.loadHeaderRow(); 
-    const rows = await sheet.getRows(); 
-    console.log(`시트에서 총 ${rows.length}개의 행을 읽었습니다.`);
+    // ⚠️ [수정] getRows() 대신 loadCells()를 사용합니다.
+    // 1행(헤더)은 건너뛰고, 2행(index 1)부터 A:D 열의 데이터만 로드합니다.
+    console.log("시트 셀 데이터 로드를 시작합니다...");
+    // A2:D(sheet.rowCount) 범위의 셀을 로드합니다.
+    await sheet.loadCells({
+        "startRowIndex": 1, // 2행부터 (0-based index)
+        "endRowIndex": sheet.rowCount, // 시트의 마지막 행까지
+        "startColumnIndex": 0, // A열부터
+        "endColumnIndex": 4 // D열까지
+    });
+    console.log(`총 ${sheet.rowCount - 1}개의 행 셀 데이터를 로드했습니다.`);
 
     const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
     let dailyTemps = [];
@@ -207,13 +214,22 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     console.log(`[목표] 날짜: "${forecastDate}", 시간: "${forecastTime}"`);
     let foundMatch = false; 
 
-    // ⚠️ [수정] 헤더 이름 대신 열의 '순서(index)'로 데이터를 읽어옵니다.
-    for (const row of rows) {
-        const date = row.get(0);      // 'fcstDate' (A열)
-        const time = row.get(1);      // 'fcstTime' (B열)
-        const category = row.get(2);  // 'category' (C열)
-        const value = row.get(3);     // 'fcstValue' (D열)
+    // ⚠️ [수정] for...of rows 대신, for 루프를 사용해 셀을 직접 순회합니다.
+    // loadCells()는 0-based index를 쓰므로, r=1이 시트의 '2행'을 의미합니다.
+    for (let r = 1; r < sheet.rowCount; r++) {
+        // .getCell(rowIndex, colIndex)로 셀 객체를 가져옵니다.
+        const dateCell = sheet.getCell(r, 0);      // (r행, A열)
+        const timeCell = sheet.getCell(r, 1);      // (r행, B열)
+        const categoryCell = sheet.getCell(r, 2);  // (r행, C열)
+        const valueCell = sheet.getCell(r, 3);     // (r행, D열)
 
+      // ⚠️ [수정] .get() 대신 .value 속성을 사용합니다.
+      const date = dateCell.value;
+      const time = timeCell.value;
+      const category = categoryCell.value;
+      const value = valueCell.value;
+
+      // (이하 데이터 처리 로직은 동일)
       const dateFromSheet = (date ?? "").toString().replace(/,/g, '').trim();
       const timeFromSheet = (time ?? "").toString().replace(/,/g, '').trim();
 
@@ -239,10 +255,10 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     } else {
         console.log(`[실패] "${forecastTime}"시 데이터를 찾지 못했습니다.`);
         
-        if (rows.length > 0) {
-            const sampleRow = rows[rows.length - 1]; 
-            const sampleDateRaw = sampleRow.get(0); // Index-based
-            const sampleTimeRaw = sampleRow.get(1); // Index-based
+        if (sheet.rowCount > 1) {
+            // 샘플을 마지막 행(r = sheet.rowCount - 1)에서 가져옵니다.
+            const sampleDateRaw = sheet.getCell(sheet.rowCount - 1, 0).value;
+            const sampleTimeRaw = sheet.getCell(sheet.rowCount - 1, 1).value;
             console.log(`[샘플] 원본 Date: "${sampleDateRaw}" (Type: ${typeof sampleDateRaw})`);
             console.log(`[샘플] 원본 Time: "${sampleTimeRaw}" (Type: ${typeof sampleTimeRaw})`);
             
@@ -274,12 +290,11 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     console.log("Google Sheet에서 데이터 읽기 성공!");
     return extracted;
 
-  // ⚠️ [수정] 빠졌던 catch 구문을 여기에 추가합니다.
   } catch (e) { 
     console.error("Google Sheet 읽기 오류:", e);
     return null;
   }
-} // ⚠️ [수정] 함수가 여기서 끝납니다.
+} // 함수 끝
 
 async function generatePolicyMessage(data) {
   const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
