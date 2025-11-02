@@ -254,31 +254,6 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     return null;
   }
 }
-    
-    if (extracted.temp === null) { 
-      // [수정] 로그에 숫자 비교가 보이도록 추가
-      throw new Error(`Sheet에서 ${forecastTime}시(숫자: ${targetTimeNumber}) 예보 데이터를 찾을 수 없습니다.`); 
-    }
-    
-    if (dailyTemps.length > 0) {
-      extracted.tmx = Math.max(...dailyTemps);
-      extracted.tmn = Math.min(...dailyTemps);
-      extracted.tempRange = extracted.tmx - extracted.tmn;
-    }
-    if (extracted.temp !== null && extracted.wsd !== null) {
-      const T = extracted.temp, V_kmh = extracted.wsd * 3.6; 
-      if (T <= 10 && V_kmh >= 4.8) {
-        const V16 = Math.pow(V_kmh, 0.16);
-        extracted.windChill = (13.12 + (0.6215 * T) - (11.37 * V16) + (0.3965 * T * V16)).toFixed(1);
-      }
-    }
-    console.log("Google Sheet에서 데이터 읽기 성공!");
-    return extracted;
-  } catch (e) {
-    console.error("Google Sheet 읽기 오류:", e);
-    return null;
-  }
-}
 
 async function generatePolicyMessage(data) {
   const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
