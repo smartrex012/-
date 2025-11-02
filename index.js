@@ -208,25 +208,23 @@ function getApiTime(mode = "OnDemand") {
 }
 
 
-// ⚠️ [수정] nx, ny를 인자로 추가
 async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDate, userNx, userNy) {
   try { 
     await doc.loadInfo(); 
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
     if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
-    // ⚠️ [추가] 데이터가 있는지(헤더 외 1줄이라도) 먼저 확인
     if (sheet.rowCount <= 1) { 
         console.log("ForecastData 시트에 데이터가 없습니다.");
         return null;
     }
 
-    // ⚠️ [수정] 인덱스(숫자) 방식 대신, A1 표기법으로 A2부터 F열의 마지막 행까지 명확하게 로드합니다.
+    // A2:F(마지막행) 범위의 셀을 로드합니다.
     console.log("시트 셀 데이터 로드를 시작합니다...");
     await sheet.loadCells(`A2:F${sheet.rowCount}`); 
 
     const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
-    let dailyTemps = []; // 해당 지역/날짜의 일교차 계산용
+    let dailyTemps = []; 
 
     const targetNx = (userNx ?? "").toString().trim();
     const targetNy = (userNy ?? "").toString().trim();
@@ -234,7 +232,6 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     console.log(`[목표] 날짜: "${forecastDate}", 시간: "${forecastTime}", NX: ${targetNx}, NY: ${targetNy}`);
     let foundMatch = false; 
 
-    // r=1은 시트의 2행을 의미합니다 (loadCells는 0-based index)
     for (let r = 1; r < sheet.rowCount; r++) { 
         const date = sheet.getCell(r, 0).value;      // A열 (fcstDate)
         const time = sheet.getCell(r, 1).value;      // B열 (fcstTime)
@@ -277,19 +274,23 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
       throw new Error(`Sheet에서 ${forecastDate}/${forecastTime}시 (${targetNx}/${targetNy}) 예보를 찾을 수 없습니다.`); 
     }
     
-    // --- 일교차 및 체감온도 계산 (변경 없음) ---
+    // --- 일교차 및 체감온도 계산 ---
     if (dailyTemps.length > 0) {
       extracted.tmx = Math.max(...dailyTemps);
       extracted.tmn = Math.min(...dailyTemps);
       extracted.tempRange = extracted.tmx - extracted.tmn;
     }
+
+    // ⚠️ [수정] 오타 'a'를 삭제했습니다.
     if (extracted.temp !== null && extracted.wsd !== null) {
-      const T = extracted.temp, V_kmh = extracted.wsd * 3.6;a 
+      const T = extracted.temp, V_kmh = extracted.wsd * 3.6; // 👈 'a' 삭제됨
       if (T <= 10 && V_kmh >= 4.8) {
         const V16 = Math.pow(V_kmh, 0.16);
         extracted.windChill = (13.12 + (0.6215 * T) - (11.37 * V16) + (0.3965 * T * V16)).toFixed(1);
       }
     }
+    // --- 계산 끝 ---
+
     console.log("Google Sheet에서 데이터 읽기 성공!");
     return extracted;
 
