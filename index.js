@@ -190,50 +190,55 @@ function getApiTime(mode = "OnDemand") {
 }
 
 
-// =========================================================================
 async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDate) {
-  try {
-    await doc.loadInfo(); // ⚠️ [수정] 403 오류 해결을 위해 loadInfo() 다시 추가
-    const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
-    if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
+  try {
+    await doc.loadInfo(); 
+    const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
+    if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
-    await sheet.loadHeaderRow(); 
-    const rows = await sheet.getRows(); 
+    await sheet.loadHeaderRow(); 
+    const rows = await sheet.getRows(); 
 
-    const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
-    let dailyTemps = [];
+    const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
+    let dailyTemps = [];
 
-    // ⚠️ [수정] "0600"(String)을 600(Number)으로 변환하여 비교 준비
-    const targetTimeNumber = parseInt(forecastTime, 10); 
+    // ⚠️ [삭제] 이 줄은 더 이상 필요 없습니다. forecastTime (String "1800")을 직접 쓸 것입니다.
+    // const targetTimeNumber = parseInt(forecastTime, 10); 
 
-    for (const row of rows) {
-      // (시트 열 순서: [0]fcstDate, [1]fcstTime, [2]category, [3]fcstValue)
-      // ⚠️ row.get('fcstTime')은 Google Sheet에서 600 (Number)으로 읽어옵니다.
-      const date = row.get('fcstDate');
-      const time = row.get('fcstTime'); // 이것은 숫자(Number) 600입니다.
-      const category = row.get('category');
-      const value = row.get('fcstValue');
+    for (const row of rows) {
+      // 시트에서 값을 읽어옵니다.
+      const date = row.get('fcstDate'); // (예: String "20251102")
+      const time = row.get('fcstTime'); // (예: Number 1800)
+      const category = row.get('category');
+      const value = row.get('fcstValue');
 
-      if (date == forecastDate) {
-        if (category === "TMP") dailyTemps.push(parseFloat(value));
-      }
-      
-      // ⚠️ [수정] 숫자(time)와 숫자(targetTimeNumber)를 비교
-      if (date == forecastDate && time == targetTimeNumber) { 
-        switch (category) {
-          case "TMP": extracted.temp = parseFloat(value); break;
-          case "POP": extracted.precipProb = parseInt(value, 10); break;
-          case "PTY": extracted.precipType = value; break;
-          case "SKY": extracted.sky = value; break;
-          case "WSD": extracted.wsd = parseFloat(value); break; 
-        }
-      }
-    }
-    
-    if (extracted.temp === null) { 
-      // [수정] 로그에 숫자 비교가 보이도록 추가
-      throw new Error(`Sheet에서 ${forecastTime}시(숫자: ${targetTimeNumber}) 예보 데이터를 찾을 수 없습니다.`); 
-    }
+      // ⚠️ [추가] 시트에서 읽은 값을 무조건 문자열로 변환합니다.
+      // (date가 null일 경우를 대비해 ??. "" 사용)
+      const dateFromSheet = (date ?? "").toString();
+      const timeFromSheet = (time ?? "").toString();
+
+      if (dateFromSheet == forecastDate) { // 👈 String("20251102") == String("20251102")
+        if (category === "TMP") dailyTemps.push(parseFloat(value));
+      }
+      
+      // ⚠️ [수정] 비교 대상을 targetTimeNumber(Number)가 아닌 forecastTime(String)으로 변경
+      if (dateFromSheet == forecastDate && timeFromSheet == forecastTime) { // 👈 String("1800") == String("1800")
+        switch (category) {
+          case "TMP": extracted.temp = parseFloat(value); break;
+          case "POP": extracted.precipProb = parseInt(value, 10); break;
+          case "PTY": extracted.precipType = value; break;
+          case "SKY": extracted.sky = value; break;
+          case "WSD": extracted.wsd = parseFloat(value); break; 
+        }
+      }
+    }
+    
+    if (extracted.temp === null) { 
+      // ⚠️ [수정] 오류 메시지도 알기 쉽게 변경
+      throw new Error(`Sheet에서 ${forecastDate} / ${forecastTime}시 예보 데이터를 찾을 수 없습니다.`); 
+    }
+
+    // ... (이하 동일) ...
     
     if (dailyTemps.length > 0) {
       extracted.tmx = Math.max(...dailyTemps);
