@@ -329,25 +329,30 @@ async function generatePolicyMessage(data) {
 }
 
 async function getUserLocation(userId) {
-  try {
-    // (doc.loadInfo()는 봇 시작 시 1회만 실행)
-    const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
-    await sheet.loadHeaderRow(); 
-    const rows = await sheet.getRows();
-    const user = rows.find(row => row.get('Type') === 'Private' && row.get('ID').toString() == userId.toString());
-    return user ? user.get('LocationName') : null;
-  } catch (e) {
-    console.error("구독자 시트(UserID) 읽기 오류:", e);
-    return null;
-  }
+  try {
+    await doc.loadInfo(); // ⚠️ [필수 추가] 시트 접근 전 loadInfo() 호출
+    const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
+    if (!sheet) throw new Error("Subscribers 시트를 찾을 수 없습니다."); // 방어 코드
+
+    await sheet.loadHeaderRow(); 
+    const rows = await sheet.getRows();
+    const user = rows.find(row => row.get('Type') === 'Private' && row.get('ID').toString() == userId.toString());
+    return user ? user.get('LocationName') : null;
+  } catch (e) {
+    console.error("구독자 시트(UserID) 읽기 오류:", e);
+    return null;
+  }
 }
 
 async function readSubscribers(type) {
-  try {
-    // (doc.loadInfo()는 봇 시작 시 1회만 실행)
-    const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
-    await sheet.loadHeaderRow();
-    const rows = await sheet.getRows();
+  try {
+    await doc.loadInfo(); // ⚠️ [필수 추가] 시트 접근 전 loadInfo() 호출
+    const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
+    if (!sheet) throw new Error("Subscribers 시트를 찾을 수 없습니다."); // 방어 코드
+
+    await sheet.loadHeaderRow();
+    const rows = await sheet.getRows();
+// ... (이하 동일) ...
     
     const subscribers = [];
     for (const row of rows) {
