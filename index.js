@@ -196,9 +196,9 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
     if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
-    // ⚠️ [추가] 라이브러리의 내부 캐시를 강제로 비웁니다.
-    sheet.resetLocalCache(); 
-    console.log("시트 캐시를 비웠습니다.");
+    // ⚠️ [삭제] 이 라인이 오류의 원인이었습니다. 삭제합니다.
+    // sheet.resetLocalCache(); 
+    // console.log("시트 캐시를 비웠습니다.");
 
     await sheet.loadHeaderRow(); 
     const rows = await sheet.getRows(); 
@@ -207,9 +207,8 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
     let dailyTemps = [];
 
-    // ⚠️ [추가] 우리가 찾으려는 목표 값을 로그로 남깁니다.
     console.log(`[목표] 날짜: "${forecastDate}", 시간: "${forecastTime}"`);
-    let foundMatch = false; // 👈 [추가] 일치하는지 확인
+    let foundMatch = false; 
 
     for (const row of rows) {
       const date = row.get('fcstDate'); 
@@ -220,13 +219,11 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
       const dateFromSheet = (date ?? "").toString().replace(/,/g, '').trim();
       const timeFromSheet = (time ?? "").toString().replace(/,/g, '').trim();
 
-      // ⚠️ [추가] 날짜가 일치하는 경우, 읽어온 시간 값을 로그로 남깁니다.
       if (dateFromSheet == forecastDate) {
         if (category === "TMP") dailyTemps.push(parseFloat(value));
         
-        // 1800시 데이터가 보일 때까지 로그를 출력합니다.
         if (timeFromSheet == forecastTime) {
-            foundMatch = true; // 👈 찾았음!
+            foundMatch = true; 
             switch (category) {
               case "TMP": extracted.temp = parseFloat(value); break;
               case "POP": extracted.precipProb = parseInt(value, 10); break;
@@ -238,15 +235,13 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
       }
     }
 
-    // ⚠️ [추가] 1800시 데이터를 찾았는지 로그를 남깁니다.
     if (foundMatch) {
         console.log(`[성공] "${forecastTime}"시 데이터를 찾았습니다.`);
     } else {
         console.log(`[실패] "${forecastTime}"시 데이터를 찾지 못했습니다.`);
         
-        // ⚠️ [추가] 원인 파악을 위해 시트에서 읽은 샘플 데이터를 1개만 출력합니다.
         if (rows.length > 0) {
-            const sampleRow = rows[rows.length - 1]; // 마지막 행 샘플
+            const sampleRow = rows[rows.length - 1]; 
             const sampleDateRaw = sampleRow.get('fcstDate');
             const sampleTimeRaw = sampleRow.get('fcstTime');
             console.log(`[샘플] 원본 Date: "${sampleDateRaw}" (Type: ${typeof sampleDateRaw})`);
@@ -262,6 +257,8 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     if (extracted.temp === null) { 
       throw new Error(`Sheet에서 ${forecastDate} / ${forecastTime}시 예보 데이터를 찾을 수 없습니다.`); 
     }
+    
+    // ... (이하 동일: if (dailyTemps.length > 0) ...)
     
     // ... (이하 동일) ...
 
