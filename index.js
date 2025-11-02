@@ -205,25 +205,26 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     // ⚠️ [삭제] 이 줄은 더 이상 필요 없습니다. forecastTime (String "1800")을 직접 쓸 것입니다.
     // const targetTimeNumber = parseInt(forecastTime, 10); 
 
+// ... (readDataFromSheet 함수 내부) ...
     for (const row of rows) {
-      // 시트에서 값을 읽어옵니다.
-      const date = row.get('fcstDate'); // (예: String "20251102")
-      const time = row.get('fcstTime'); // (예: Number 1800)
+      const date = row.get('fcstDate'); 
+      const time = row.get('fcstTime'); 
       const category = row.get('category');
       const value = row.get('fcstValue');
 
-      // ⚠️ [추가] 시트에서 읽은 값을 무조건 문자열로 변환합니다.
-      // (date가 null일 경우를 대비해 ??. "" 사용)
-      const dateFromSheet = (date ?? "").toString();
-      const timeFromSheet = (time ?? "").toString();
+      // ⚠️ [수정] .toString()과 .trim() 사이에 .replace(/,/g, '')를 추가하여
+      // "20,251,102" 같은 쉼표를 강제로 제거합니다.
+      const dateFromSheet = (date ?? "").toString().replace(/,/g, '').trim();
+      const timeFromSheet = (time ?? "").toString().replace(/,/g, '').trim();
 
-      if (dateFromSheet == forecastDate) { // 👈 String("20251102") == String("20251102")
+      if (dateFromSheet == forecastDate) { 
         if (category === "TMP") dailyTemps.push(parseFloat(value));
       }
       
-      // ⚠️ [수정] 비교 대상을 targetTimeNumber(Number)가 아닌 forecastTime(String)으로 변경
-      if (dateFromSheet == forecastDate && timeFromSheet == forecastTime) { // 👈 String("1800") == String("1800")
+      // "20251102" == "20251102" AND "1800" == "1800"
+      if (dateFromSheet == forecastDate && timeFromSheet == forecastTime) { 
         switch (category) {
+// ... (이하 동일) ...
           case "TMP": extracted.temp = parseFloat(value); break;
           case "POP": extracted.precipProb = parseInt(value, 10); break;
           case "PTY": extracted.precipType = value; break;
