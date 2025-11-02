@@ -297,44 +297,68 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
 } // 함수 끝
 
 async function generatePolicyMessage(data) {
-  const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
-  const precipText = (data.precipType === '0') ? '없음' : (data.precipType === '1') ? '비' : (data.precipType === '2') ? '비/눈' : (data.precipType === '3') ? '소나기' : '알 수 없음';
+  const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
+
+  // ⚠️ [수정] 기상청 API 명세서에 따라 PTY 코드를 수정합니다. (3: 눈, 4: 소나기 등)
+  const precipText = (data.precipType === '0') ? '없음' : (data.precipType === '1') ? '비' : (data.precipType === '2') ? '비/눈' : (data.precipType === '3') ? '눈' : (data.precipType === '4') ? '소나기' : (data.precipType === '5') ? '빗방울' : (data.precipType === '6') ? '빗방울/눈날림' : (data.precipType === '7') ? '눈날림' : '알 수 없음';
+  
   let tempRangeText = "", windChillText = "";
-  if (data.tempRange !== null) tempRangeText = `(오늘 일교차: ${data.tempRange.toFixed(1)}℃)`;
-  if (data.windChill !== null) windChillText = `(체감 온도: ${data.windChill}℃)`;
-  
-  const prompt = `
-    당신은 날씨 데이터를 분석해 "그래서 뭘 해야 하는지"만 알려주는 '날씨 알리미'입니다. 어투는 '방금 막 기상한 이들이 기분 좋게 받아들일 수 있는 정도'로 해주세요. 
-    [예보 데이터]
-    - 위치: ${data.locationName}
-    - 시간: ${data.forecastHour}
-    - 현재 기온: ${data.temp}℃
-    - 하늘 상태: ${skyText}
-    - 강수 형태: ${precipText}
-    - 강수 확률: ${data.precipProb}%
-    - ${tempRangeText}
-    - ${windChillText}
-    규칙:
-    1. ${data.locationName}의 사용자가 ${data.forecastHour}에 참고해야 할 구체적인 행동 지침(우산, 활동)과 옷차림(상의/하의)을 먼저 제시하세요.
-    2. [체감온도/일교차 반영] '체감 온도'나 '일교차' 정보가 있다면, 옷차림 추천 시 (예: "바람이 불어 체감온도가 낮으니 따뜻하게 입으세요", "일교차가 크니 겉옷을 챙기세요") 꼭 반영하세요.
-    3. [옷차림 이모지] 옷차림 추천 시 🧥, 👕, 👖 같은 이모지를 사용하세요.
-    4. [날씨 설명] 행동 지침 제시 후, 한 줄 띄우고 ${data.locationName}의 날씨 요약을 간략히 설명하세요.
-    5. [날씨 이모지] 날씨 요약 끝에 날씨를 표현하는 ☀️, ☁️, 🌧️ 같은 이모지 1개를 붙여주세요.
-  `;
-  
-  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-  
-  try {
-    const response = await axios.post(GEMINI_URL, {
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 1024 }
-    });
+  if (data.tempRange !== null) tempRangeText = `(오늘 일교차: ${data.tempRange.toFixed(1)}℃)`;
+  if (data.windChill !== null) windChillText = `(체감 온도: ${data.windChill}℃)`;
+  
+  const prompt = `
+    당신은 날씨 데이터를 분석해 "그래서 뭘 해야 하는지"만 알려주는 '날씨 알리미'입니다. 어투는 '방금 막 기상한 이들이 기분 좋게 받아들일 수 있는 정도'로 해주세요. 
+    [예보 데이터]
+    - 위치: ${data.locationName}
+    - 시간: ${data.forecastHour}
+    - 현재 기온: ${data.temp}℃
+    - 하늘 상태: ${skyText}
+    - 강수 형태: ${precipText}
+    - 강수 확률: ${data.precipProb}%
+    - ${tempRangeText}
+    - ${windChillText}
+    규칙:
+    1. ${data.locationName}의 사용자가 ${data.forecastHour}에 참고해야 할 구체적인 행동 지침(우산, 활동)과 옷차림(상의/하의)을 먼저 제시하세요.
+    2. [체감온도/일교차 반영] '체감 온도'나 '일교차' 정보가 있다면, 옷차림 추천 시 (예: "바람이 불어 체감온도가 낮으니 따뜻하게 입으세요", "일교차가 크니 겉옷을 챙기세요") 꼭 반영하세요.
+    3. [옷차림 이모지] 옷차림 추천 시 🧥, 👕, 👖 같은 이모지를 사용하세요.
+    4. [날씨 설명] 행동 지침 제시 후, 한 줄 띄우고 ${data.locationName}의 날씨 요약을 간략히 설명하세요.
+    5. [날씨 이모지] 날씨 요약 끝에 날씨를 표현하는 ☀️, ☁️, 🌧️ 같은 이모지 1개를 붙여주세요.
+  `;
+  
+  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  
+  try {
+    const response = await axios.post(GEMINI_URL, {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.8, maxOutputTokens: 1024 }
+    });
+    
+    // ⚠️ [수정] API 응답에 'candidates'가 있는지, 비어있지 않은지 확인합니다.
+    if (response.data && response.data.candidates && response.data.candidates.length > 0) {
+      // ⚠️ [수정] content.parts가 있는지도 확인합니다.
+      const parts = response.data.candidates[0].content.parts;
+      if (parts && parts.length > 0) {
+        return parts[0].text.trim();
+      }
+    }
     
-    return response.data.candidates[0].content.parts[0].text.trim();
-  } catch (e) {
-    console.error("Gemini API 호출 오류:", e.response ? e.response.data : e.message);
-    return "🚨 AI가 행동 지침 생성에 실패했습니다.";
-  }
+    // ⚠️ [수정] candidates가 없거나 비어있는 경우 (예: 세이프티 설정 차단)
+    console.error("Gemini API 호출은 성공했으나, 유효한 'candidates'가 없습니다.");
+    // 봇이 차단된 이유(예: "blockReason": "SAFETY")를 확인하기 위해 전체 응답을 로깅합니다.
+    console.log("전체 API 응답:", JSON.stringify(response.data, null, 2));
+    return "🚨 AI가 행동 지침 생성에 실패했습니다. (API 응답 없음)";
+
+  } catch (e) {
+    // ⚠️ [수정] e.response가 있는 경우(axios 오류)와 없는 경우(일반 JS 오류)를 구분하여 로깅합니다.
+    if (e.response) {
+      // 4xx, 5xx 응답 등 axios 오류
+      console.error("Gemini API 호출 실패 (HTTP 오류):", e.response.status, e.response.data);
+    } else {
+      // 'candidates[0]' 접근 오류 등 코드 내 JS 오류
+      console.error("Gemini API 응답 처리 오류:", e.message);
+    }
+    return "🚨 AI가 행동 지침 생성에 실패했습니다.";
+  }
 }
 
 async function getUserLocation(userId) {
