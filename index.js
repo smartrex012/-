@@ -196,48 +196,74 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
     if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
+    // ⚠️ [추가] 라이브러리의 내부 캐시를 강제로 비웁니다.
+    sheet.resetLocalCache(); 
+    console.log("시트 캐시를 비웠습니다.");
+
     await sheet.loadHeaderRow(); 
     const rows = await sheet.getRows(); 
+    console.log(`시트에서 총 ${rows.length}개의 행을 읽었습니다.`);
 
     const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
     let dailyTemps = [];
 
-    // ⚠️ [삭제] 이 줄은 더 이상 필요 없습니다. forecastTime (String "1800")을 직접 쓸 것입니다.
-    // const targetTimeNumber = parseInt(forecastTime, 10); 
+    // ⚠️ [추가] 우리가 찾으려는 목표 값을 로그로 남깁니다.
+    console.log(`[목표] 날짜: "${forecastDate}", 시간: "${forecastTime}"`);
+    let foundMatch = false; // 👈 [추가] 일치하는지 확인
 
-// ... (readDataFromSheet 함수 내부) ...
     for (const row of rows) {
       const date = row.get('fcstDate'); 
       const time = row.get('fcstTime'); 
       const category = row.get('category');
       const value = row.get('fcstValue');
 
-      // ⚠️ [수정] .toString()과 .trim() 사이에 .replace(/,/g, '')를 추가하여
-      // "20,251,102" 같은 쉼표를 강제로 제거합니다.
       const dateFromSheet = (date ?? "").toString().replace(/,/g, '').trim();
       const timeFromSheet = (time ?? "").toString().replace(/,/g, '').trim();
 
-      if (dateFromSheet == forecastDate) { 
-        if (category === "TMP") dailyTemps.push(parseFloat(value));
-      }
-      
-      // "20251102" == "20251102" AND "1800" == "1800"
-      if (dateFromSheet == forecastDate && timeFromSheet == forecastTime) { 
-        switch (category) {
-// ... (이하 동일) ...
-          case "TMP": extracted.temp = parseFloat(value); break;
-          case "POP": extracted.precipProb = parseInt(value, 10); break;
-          case "PTY": extracted.precipType = value; break;
-          case "SKY": extracted.sky = value; break;
-          case "WSD": extracted.wsd = parseFloat(value); break; 
-        }
-      }
+      // ⚠️ [추가] 날짜가 일치하는 경우, 읽어온 시간 값을 로그로 남깁니다.
+      if (dateFromSheet == forecastDate) {
+        if (category === "TMP") dailyTemps.push(parseFloat(value));
+        
+        // 1800시 데이터가 보일 때까지 로그를 출력합니다.
+        if (timeFromSheet == forecastTime) {
+            foundMatch = true; // 👈 찾았음!
+            switch (category) {
+              case "TMP": extracted.temp = parseFloat(value); break;
+              case "POP": extracted.precipProb = parseInt(value, 10); break;
+              case "PTY": extracted.precipType = value; break;
+              case "SKY": extracted.sky = value; break;
+              case "WSD": extracted.wsd = parseFloat(value); break; 
+            }
+        }
+      }
     }
+
+    // ⚠️ [추가] 1800시 데이터를 찾았는지 로그를 남깁니다.
+    if (foundMatch) {
+        console.log(`[성공] "${forecastTime}"시 데이터를 찾았습니다.`);
+    } else {
+        console.log(`[실패] "${forecastTime}"시 데이터를 찾지 못했습니다.`);
+        
+        // ⚠️ [추가] 원인 파악을 위해 시트에서 읽은 샘플 데이터를 1개만 출력합니다.
+        if (rows.length > 0) {
+            const sampleRow = rows[rows.length - 1]; // 마지막 행 샘플
+            const sampleDateRaw = sampleRow.get('fcstDate');
+            const sampleTimeRaw = sampleRow.get('fcstTime');
+            console.log(`[샘플] 원본 Date: "${sampleDateRaw}" (Type: ${typeof sampleDateRaw})`);
+            console.log(`[샘플] 원본 Time: "${sampleTimeRaw}" (Type: ${typeof sampleTimeRaw})`);
+            
+            const sampleDateProcessed = (sampleDateRaw ?? "").toString().replace(/,/g, '').trim();
+            const sampleTimeProcessed = (sampleTimeRaw ?? "").toString().replace(/,/g, '').trim();
+            console.log(`[샘플] 처리된 Date: "${sampleDateProcessed}"`);
+            console.log(`[샘플] 처리된 Time: "${sampleTimeProcessed}"`);
+        }
+    }
     
     if (extracted.temp === null) { 
-      // ⚠️ [수정] 오류 메시지도 알기 쉽게 변경
       throw new Error(`Sheet에서 ${forecastDate} / ${forecastTime}시 예보 데이터를 찾을 수 없습니다.`); 
     }
+    
+    // ... (이하 동일) ...
 
     // ... (이하 동일) ...
     
