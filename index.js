@@ -210,21 +210,28 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     console.log(`[목표] 날짜: "${forecastDate}", 시간: "${forecastTime}"`);
     let foundMatch = false; 
 
+// ... (readDataFromSheet 함수 내부) ...
     for (const row of rows) {
-      const date = row.get('fcstDate'); 
-      const time = row.get('fcstTime'); 
-      const category = row.get('category');
-      const value = row.get('fcstValue');
+      // ⚠️ [수정] 'headerName' 대신 'index'로 데이터를 읽어옵니다.
+      const date = row.get(0);      // 'fcstDate' (A열)
+      const time = row.get(1);      // 'fcstTime' (B열)
+      const category = row.get(2);  // 'category' (C열)
+      const value = row.get(3);     // 'fcstValue' (D열)
 
+      // ⚠️ [수정] .toString()과 .trim() 사이에 .replace(/,/g, '')를 추가하여
+      // "20,251,102" 같은 쉼표를 강제로 제거합니다.
       const dateFromSheet = (date ?? "").toString().replace(/,/g, '').trim();
       const timeFromSheet = (time ?? "").toString().replace(/,/g, '').trim();
 
-      if (dateFromSheet == forecastDate) {
-        if (category === "TMP") dailyTemps.push(parseFloat(value));
-        
-        if (timeFromSheet == forecastTime) {
-            foundMatch = true; 
-            switch (category) {
+      if (dateFromSheet == forecastDate) { 
+        if (category === "TMP") dailyTemps.push(parseFloat(value));
+      }
+      
+      // "20251102" == "20251102" AND "1800" == "1800"
+      if (dateFromSheet == forecastDate && timeFromSheet == forecastTime) { 
+        foundMatch = true; // 👈 디버깅 로그용 (찾았음!)
+        switch (category) {
+// ... (이하 동일) ...
               case "TMP": extracted.temp = parseFloat(value); break;
               case "POP": extracted.precipProb = parseInt(value, 10); break;
               case "PTY": extracted.precipType = value; break;
