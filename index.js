@@ -215,50 +215,45 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
     const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
     if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
-    // ⚠️ [수정] 1행(헤더)은 건너뛰고, A2:F(끝)까지 로드합니다. (6열)
+    // ⚠️ [추가] 데이터가 있는지(헤더 외 1줄이라도) 먼저 확인
+    if (sheet.rowCount <= 1) { 
+        console.log("ForecastData 시트에 데이터가 없습니다.");
+        return null;
+    }
+
+    // ⚠️ [수정] 인덱스(숫자) 방식 대신, A1 표기법으로 A2부터 F열의 마지막 행까지 명확하게 로드합니다.
     console.log("시트 셀 데이터 로드를 시작합니다...");
-    await sheet.loadCells({
-        "startRowIndex": 1, // 2행부터 (0-based index)
-        "endRowIndex": sheet.rowCount, // 시트의 마지막 행까지
-        "startColumnIndex": 0, // A열부터
-        "endRowIndex": 6 // ⚠️ F열(index 5)까지 (A=0, B=1, C=2, D=3, E=4, F=5)
-    });
-    // console.log(`총 ${sheet.rowCount - 1}개의 행 셀 데이터를 로드했습니다.`); // (로그가 너무 길어질 수 있으니 주석 처리)
+    await sheet.loadCells(`A2:F${sheet.rowCount}`); 
 
     const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
     let dailyTemps = []; // 해당 지역/날짜의 일교차 계산용
 
-    // ⚠️ [추가] userNx, userNy를 문자열로 변환 (비교용)
     const targetNx = (userNx ?? "").toString().trim();
     const targetNy = (userNy ?? "").toString().trim();
 
     console.log(`[목표] 날짜: "${forecastDate}", 시간: "${forecastTime}", NX: ${targetNx}, NY: ${targetNy}`);
     let foundMatch = false; 
 
-    // ⚠️ [수정] F열(index 5)까지 읽도록 수정
-    for (let r = 1; r < sheet.rowCount; r++) {
+    // r=1은 시트의 2행을 의미합니다 (loadCells는 0-based index)
+    for (let r = 1; r < sheet.rowCount; r++) { 
         const date = sheet.getCell(r, 0).value;      // A열 (fcstDate)
         const time = sheet.getCell(r, 1).value;      // B열 (fcstTime)
         const category = sheet.getCell(r, 2).value;  // C열 (category)
         const value = sheet.getCell(r, 3).value;     // D열 (fcstValue)
-        const nx = sheet.getCell(r, 4).value;        // ⚠️ E열 (NX)
-        const ny = sheet.getCell(r, 5).value;        // ⚠️ F열 (NY)
+        const nx = sheet.getCell(r, 4).value;        // E열 (NX)
+        const ny = sheet.getCell(r, 5).value;        // F열 (NY)
 
       const dateFromSheet = (date ?? "").toString().replace(/,/g, '').trim();
       const timeFromSheet = (time ?? "").toString().replace(/,/g, '').trim();
-      // ⚠️ [추가] NX, NY 값도 처리
       const nxFromSheet = (nx ?? "").toString().trim();
       const nyFromSheet = (ny ?? "").toString().trim();
 
-      // ⚠️ [수정] NX, NY가 일치하는 데이터만 찾도록 필터링 강화
       if (dateFromSheet == forecastDate && nxFromSheet == targetNx && nyFromSheet == targetNy) {
         
         if (category === "TMP") {
-          // 일교차 계산을 위해 해당 날짜/지역의 모든 기온을 수집
           dailyTemps.push(parseFloat(value));
         }
         
-        // ⚠️ [수정] 시간 일치 확인을 날짜/좌표 필터 안으로 이동
         if (timeFromSheet == forecastTime) {
             foundMatch = true; 
             switch (category) {
@@ -289,7 +284,7 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
       extracted.tempRange = extracted.tmx - extracted.tmn;
     }
     if (extracted.temp !== null && extracted.wsd !== null) {
-      const T = extracted.temp, V_kmh = extracted.wsd * 3.6; 
+      const T = extracted.temp, V_kmh = extracted.wsd * 3.6;a 
       if (T <= 10 && V_kmh >= 4.8) {
         const V16 = Math.pow(V_kmh, 0.16);
         extracted.windChill = (13.12 + (0.6215 * T) - (11.37 * V16) + (0.3965 * T * V16)).toFixed(1);
