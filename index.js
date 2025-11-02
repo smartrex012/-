@@ -191,47 +191,38 @@ function getApiTime(mode = "OnDemand") {
 
 
 async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDate) {
-  try {
-    await doc.loadInfo(); 
-    const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
-    if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
+  // ⚠️ [수정] try...catch 블록이 여기서 시작됩니다.
+  try { 
+    await doc.loadInfo(); 
+    const sheet = doc.sheetsByTitle[FORECAST_SHEET_NAME];
+    if (!sheet) throw new Error("ForecastData 시트를 찾을 수 없습니다.");
 
-    // ⚠️ [삭제] 이 라인이 오류의 원인이었습니다. 삭제합니다.
-    // sheet.resetLocalCache(); 
-    // console.log("시트 캐시를 비웠습니다.");
-
-    await sheet.loadHeaderRow(); 
-    const rows = await sheet.getRows(); 
+    await sheet.loadHeaderRow(); 
+    const rows = await sheet.getRows(); 
     console.log(`시트에서 총 ${rows.length}개의 행을 읽었습니다.`);
 
-    const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
-    let dailyTemps = [];
+    const extracted = { temp: null, precipProb: null, precipType: null, sky: null, forecastHour: forecastHourForPrompt, tmn: null, tmx: null, tempRange: null, wsd: null, windChill: null };
+    let dailyTemps = [];
 
     console.log(`[목표] 날짜: "${forecastDate}", 시간: "${forecastTime}"`);
     let foundMatch = false; 
 
-// ... (readDataFromSheet 함수 내부) ...
-    for (const row of rows) {
-      // ⚠️ [수정] 'headerName' 대신 'index'로 데이터를 읽어옵니다.
-      const date = row.get(0);      // 'fcstDate' (A열)
-      const time = row.get(1);      // 'fcstTime' (B열)
-      const category = row.get(2);  // 'category' (C열)
-      const value = row.get(3);     // 'fcstValue' (D열)
+    // ⚠️ [수정] 헤더 이름 대신 열의 '순서(index)'로 데이터를 읽어옵니다.
+    for (const row of rows) {
+        const date = row.get(0);      // 'fcstDate' (A열)
+        const time = row.get(1);      // 'fcstTime' (B열)
+        const category = row.get(2);  // 'category' (C열)
+        const value = row.get(3);     // 'fcstValue' (D열)
 
-      // ⚠️ [수정] .toString()과 .trim() 사이에 .replace(/,/g, '')를 추가하여
-      // "20,251,102" 같은 쉼표를 강제로 제거합니다.
       const dateFromSheet = (date ?? "").toString().replace(/,/g, '').trim();
       const timeFromSheet = (time ?? "").toString().replace(/,/g, '').trim();
 
-      if (dateFromSheet == forecastDate) { 
-        if (category === "TMP") dailyTemps.push(parseFloat(value));
-      }
-      
-      // "20251102" == "20251102" AND "1800" == "1800"
-      if (dateFromSheet == forecastDate && timeFromSheet == forecastTime) { 
-        foundMatch = true; // 👈 디버깅 로그용 (찾았음!)
-        switch (category) {
-// ... (이하 동일) ...
+      if (dateFromSheet == forecastDate) {
+        if (category === "TMP") dailyTemps.push(parseFloat(value));
+        
+        if (timeFromSheet == forecastTime) {
+            foundMatch = true; 
+            switch (category) {
               case "TMP": extracted.temp = parseFloat(value); break;
               case "POP": extracted.precipProb = parseInt(value, 10); break;
               case "PTY": extracted.precipType = value; break;
@@ -240,8 +231,9 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
             }
         }
       }
-    }
+    } // for 루프 끝
 
+    // --- 디버깅 로그 ---
     if (foundMatch) {
         console.log(`[성공] "${forecastTime}"시 데이터를 찾았습니다.`);
     } else {
@@ -249,8 +241,8 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
         
         if (rows.length > 0) {
             const sampleRow = rows[rows.length - 1]; 
-            const sampleDateRaw = sampleRow.get('fcstDate');
-            const sampleTimeRaw = sampleRow.get('fcstTime');
+            const sampleDateRaw = sampleRow.get(0); // Index-based
+            const sampleTimeRaw = sampleRow.get(1); // Index-based
             console.log(`[샘플] 원본 Date: "${sampleDateRaw}" (Type: ${typeof sampleDateRaw})`);
             console.log(`[샘플] 원본 Time: "${sampleTimeRaw}" (Type: ${typeof sampleTimeRaw})`);
             
@@ -260,36 +252,34 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
             console.log(`[샘플] 처리된 Time: "${sampleTimeProcessed}"`);
         }
     }
+    // --- 디버깅 로그 끝 ---
     
     if (extracted.temp === null) { 
       throw new Error(`Sheet에서 ${forecastDate} / ${forecastTime}시 예보 데이터를 찾을 수 없습니다.`); 
     }
     
-    // ... (이하 동일: if (dailyTemps.length > 0) ...)
-    
-    // ... (이하 동일) ...
+    // --- 기존 데이터 처리 로직 ---
+    if (dailyTemps.length > 0) {
+      extracted.tmx = Math.max(...dailyTemps);
+      extracted.tmn = Math.min(...dailyTemps);
+      extracted.tempRange = extracted.tmx - extracted.tmn;
+    }
+    if (extracted.temp !== null && extracted.wsd !== null) {
+      const T = extracted.temp, V_kmh = extracted.wsd * 3.6; 
+      if (T <= 10 && V_kmh >= 4.8) {
+        const V16 = Math.pow(V_kmh, 0.16);
+        extracted.windChill = (13.12 + (0.6215 * T) - (11.37 * V16) + (0.3965 * T * V16)).toFixed(1);
+      }
+    }
+    console.log("Google Sheet에서 데이터 읽기 성공!");
+    return extracted;
 
-    // ... (이하 동일) ...
-    
-    if (dailyTemps.length > 0) {
-      extracted.tmx = Math.max(...dailyTemps);
-      extracted.tmn = Math.min(...dailyTemps);
-      extracted.tempRange = extracted.tmx - extracted.tmn;
-    }
-    if (extracted.temp !== null && extracted.wsd !== null) {
-      const T = extracted.temp, V_kmh = extracted.wsd * 3.6; 
-      if (T <= 10 && V_kmh >= 4.8) {
-        const V16 = Math.pow(V_kmh, 0.16);
-        extracted.windChill = (13.12 + (0.6215 * T) - (11.37 * V16) + (0.3965 * T * V16)).toFixed(1);
-      }
-    }
-    console.log("Google Sheet에서 데이터 읽기 성공!");
-    return extracted;
-  } catch (e) {
-    console.error("Google Sheet 읽기 오류:", e);
-    return null;
+  // ⚠️ [수정] 빠졌던 catch 구문을 여기에 추가합니다.
+  } catch (e) { 
+    console.error("Google Sheet 읽기 오류:", e);
+    return null;
   }
-}
+} // ⚠️ [수정] 함수가 여기서 끝납니다.
 
 async function generatePolicyMessage(data) {
   const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
