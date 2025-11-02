@@ -330,7 +330,7 @@ async function generatePolicyMessage(data) {
   try {
     const response = await axios.post(GEMINI_URL, {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.8, maxOutputTokens: 1024 }
+      generationConfig: { temperature: 0.8, maxOutputTokens: 4096}
     });
     
     // ⚠️ [수정] API 응답에 'candidates'가 있는지, 비어있지 않은지 확인합니다.
