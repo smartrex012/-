@@ -387,7 +387,7 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
   }
 }
 
-// ⚠️ [수정] 'async' 키워드가 여기에 있어야 합니다.
+// ⚠️ [수정] 'async' 키워드와, 함수 내부의 문법 오류가 수정된 최종본입니다.
 async function generatePolicyMessage(data, currentHour) {
   const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
 
@@ -427,6 +427,7 @@ async function generatePolicyMessage(data, currentHour) {
   }
   
   // (프롬프트 시작)
+  // ⚠️ [수정] 규칙 5번을 수정하여 쉼표(,)가 찍히지 않도록 명확하게 지시합니다.
   const prompt = `
     당신은 날씨 데이터를 분석해 "그래서 뭘 해야 하는지"를 알려주는 친절한 '날씨 알리미'입니다. 어투는 긍정적이고 기분 좋게 해주세요.
 
@@ -446,7 +447,7 @@ async function generatePolicyMessage(data, currentHour) {
     2.  **행동 지침:** 인사말 다음, [${data.forecastHour} 행동 지침]이라는 제목으로 ${data.locationName}의 날씨를 바탕으로 우산 필요 여부(강수 확률/형태), 야외 활동 적합성 등 1-2가지 핵심 조언을 하세요.
     3.  **옷차림 추천:** 다음으로, [${data.forecastHour} 옷차림]이라는 제목으로 🧥 상의, 👕 하의, 🧣 기타(겉옷/액세서리)로 나누어 구체적인 아이템(예: '두툼한 니트', '기모 바지', '경량 패딩')을 추천하세요.
     4.  **데이터 반영 (필수):** 옷차림 추천 시, [일교차 정보]와 [체감온도 정보]를 반드시 말로 풀어서 반영하세요. (예: "일교차가 크니 얇은 겉옷을 챙기세요", "바람이 불어 체감온도가 낮으니 목도리가 좋겠어요", "바람이 약해 실제 기온과 비슷할 거예요.")
-    5.  **날씨 요약표 (필수):** 마지막으로, '[${data.locationName} (${data.forecastHour}) 날씨 요약]'이라는 제목으로 아래 데이터를 **표(테이블) 형식**으로 깔끔하게 정리하세요.
+    5.  **날씨 요약표 (필수):** 마지막으로, '[${data.locationName} (${data.forecastHour}) 날씨 요약]'이라는 제목으로 아래 데이터를 **표(테이블) 형식**으로 깔끔하게 정리하세요. (쉼표 등 다른 문자 없이 제목과 표만 출력하세요.)
         * 항목: 기온, 하늘 상태, 강수 확률, 강수 형태, 체감 온도, 일교차
         * 내용: [예보 데이터]의 값을 그대로 사용하세요. (예: 체감 온도의 경우 '${windChillText}'에 담긴 "바람이 약해..." 설명을 그대로 표에 넣으세요.)
     6.  **마무리 이모지:** 표 아래에 날씨에 어울리는 ☀️, ☁️, 🌧️ 같은 이모지 1개를 붙이며 마무리하세요.
@@ -467,14 +468,16 @@ async function generatePolicyMessage(data, currentHour) {
         return parts[0].text.trim();
       }
     }
-   {
+   
+    // ⚠️ [수정] 지난번 코드에 있던 불필요한 중괄호 '{'를 삭제했습니다.
     console.error("Gemini API 호출은 성공했으나, 유효한 'candidates'가 없습니다.");
     console.log("전체 API 응답:", JSON.stringify(response.data, null, 2));
     return "🚨 AI가 행동 지침 생성에 실패했습니다. (API 응답 없음)";
-  }
-  } catch (e) {
+
+  } catch (e) {
     if (e.response) {
       console.error("Gemini API 호출 실패 (HTTP 오류):", e.response.status, e.response.data);
+s
     } else {
       console.error("Gemini API 응답 처리 오류:", e.message);
     }
