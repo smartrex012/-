@@ -537,13 +537,101 @@ async function sendChannelMessage(channelId, messageText, channelName) {
   }
 }
 
-// --- 5. ⚠️ [필수] UptimeRobot 핑(Ping)을 받기 위한 웹 서버 ---
-const PORT = process.env.PORT || 10000; // Render가 할당하는 동적 포트 사용
-http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type': 'text/plain'});
-  res.end('Discord bot is alive and listening for pings!');
+// ... (파일의 다른 함수들은 그대로 둡니다) ...
+
+// =========================================================================
+// 5. ⚠️ [수정] UptimeRobot 핑(Ping) 및 Webhook 리스너
+// =========================================================================
+
+// (NEW) Render Secrets에서 Webhook 비밀 키를 불러옵니다.
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
+
+const PORT = process.env.PORT || 10000; 
+http.createServer(async (req, res) => {
+  try {
+    // 1. UptimeRobot 핑 처리 (기존)
+    if (req.method === 'GET' && req.url === '/') {
+      res.writeHead(200, {'Content-Type': 'text/plain'});
+      res.end('Discord bot is alive and listening for pings!');
+      return;
+    }
+
+    // 2. (NEW) Google Form 완료 Webhook 처리
+    if (req.method === 'POST' && req.url === '/registration-complete') {
+      let body = '';
+      req.on('data', chunk => {
+        body += chunk.toString(); // convert Buffer to string
+      });
+      req.on('end', async () => {
+        try {
+          const data = JSON.parse(body);
+          
+          // 3. (NEW) 보안 키 확인
+          if (!WEBHOOK_SECRET || data.secret !== WEBHOOK_SECRET) {
+            console.warn("Webhook 호출 실패: 잘못된 Secret Key");
+            res.writeHead(403, {'Content-Type': 'text/plain'});
+            res.end('Forbidden: Invalid secret');
+            return;
+          }
+
+          // 4. (NEW) DM 발송 함수 호출
+          if (data.userId) {
+            await sendRegistrationCompleteDM(data.userId);
+            console.log(`Webhook 수신: ${data.userId}에게 등록 완료 DM 발송 시도.`);
+            res.writeHead(200, {'Content-Type': 'text/plain'});
+            res.end('Webhook received and DM queued.');
+          } else {
+            console.warn("Webhook 호출 실패: userId가 없습니다.");
+            res.writeHead(400, {'Content-Type': 'text/plain'});
+            res.end('Bad Request: Missing userId');
+          }
+        } catch (e) {
+          console.error("Webhook body 파싱 오류:", e);
+          res.writeHead(400, {'Content-Type': 'text/plain'});
+          res.end('Bad Request');
+        }
+      });
+      return;
+    }
+
+    // 5. 그 외 모든 요청은 404
+    res.writeHead(404, {'Content-Type': 'text/plain'});
+    res.end('Not Found');
+
+  } catch (e) {
+    console.error("HTTP 서버 오류:", e);
+    res.writeHead(500, {'Content-Type': 'text/plain'});
+    res.end('Internal Server Error');
+  }
 }).listen(PORT, () => {
-  console.log(`UptimeRobot 리스너가 포트 ${PORT}에서 실행 중입니다.`);
+  console.log(`HTTP 리스너(Ping/Webhook)가 포트 ${PORT}에서 실행 중입니다.`);
 });
+
+/**
+ * (NEW) 등록 완료 DM을 발송하는 함수
+ */
+async function sendRegistrationCompleteDM(userId) {
+  try {
+    const user = await client.users.fetch(userId);
+    if (!user) {
+      console.log(`[DM 실패] ID ${userId}에 해당하는 사용자를 찾을 수 없습니다.`);
+      return;
+    }
+
+    const message = `
+🎉 **등록이 완료되었습니다!**
+
+이제 이 서버의 아무 채널에서나 \`/weather\` 명령어를 입력하시면,
+등록하신 위치의 최신 날씨 정보를 **DM(개인 메시지)**으로 즉시 보내드립니다.
+`;
+
+    await user.send(message);
+    console.log(`[DM 성공] ${user.tag}님에게 등록 완료 메시지를 보냈습니다.`);
+  } catch (e) {
+    console.error(`[DM 실패] ${userId}님에게 등록 완료 DM을 보내는 중 오류 발생:`, e);
+  }
+}
+
+// (NEW) GuildMemberAdd 이벤트 핸들러와 preRegisterUser 함수가 이 위에 있어야 합니다.
 
 client.login(BOT_TOKEN);
