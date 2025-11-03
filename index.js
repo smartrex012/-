@@ -17,6 +17,8 @@ const CLIENT_ID = process.env.CLIENT_ID; // ⚠️ Secrets에 봇의 Application
 const TEST_GUILD_ID = process.env.TEST_GUILD_ID; // ⚠️ [권장] Secrets에 '서버 ID'를 이 이름으로 저장하세요.
 const GOOGLE_SERVICE_ACCOUNT_CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_CREDS);
 const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID;
+// ⚠️ [추가] Webhook 비밀 키를 파일 맨 위로 이동
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 
 // Google Sheets 인증
 const serviceAccountAuth = new JWT({
@@ -573,6 +575,12 @@ const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
 // (NEW) Render Secrets에서 Webhook 비밀 키를 불러옵니다.
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
 
+// =========================================================================
+// 5. ⚠️ [수정] UptimeRobot 핑(Ping) 및 Webhook 리스너
+// =========================================================================
+
+// ⚠️ [삭제] 'const WEBHOOK_SECRET = ...' 줄을 삭제 (파일 맨 위로 이동했음)
+
 const PORT = process.env.PORT || 10000; 
 http.createServer(async (req, res) => {
   try {
@@ -593,7 +601,7 @@ http.createServer(async (req, res) => {
         try {
           const data = JSON.parse(body);
           
-          // 3. (NEW) 보안 키 확인
+          // 3. (NEW) 보안 키 확인 (이제 파일 맨 위에서 WEBHOOK_SECRET를 읽어옴)
           if (!WEBHOOK_SECRET || data.secret !== WEBHOOK_SECRET) {
             console.warn("Webhook 호출 실패: 잘못된 Secret Key");
             res.writeHead(403, {'Content-Type': 'text/plain'});
@@ -608,6 +616,7 @@ http.createServer(async (req, res) => {
             res.writeHead(200, {'Content-Type': 'text/plain'});
             res.end('Webhook received and DM queued.');
           } else {
+            // (이하 코드 동일)
             console.warn("Webhook 호출 실패: userId가 없습니다.");
             res.writeHead(400, {'Content-Type': 'text/plain'});
             res.end('Bad Request: Missing userId');
