@@ -645,3 +645,9 @@ async function sendRegistrationCompleteDM(userId) {
     console.error(`[DM 실패] ${userId}님에게 등록 완료 DM을 보내는 중 오류 발생:`, e);
   }
 }
+// [ 📄 index.js ]
+
+// ... (파일의 모든 코드가 끝난 후) ...
+
+// ⚠️ [추가] 이 코드가 누락되었습니다!
+client.login(BOT_TOKEN);
