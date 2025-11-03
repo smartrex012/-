@@ -387,21 +387,15 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
   }
 }
 
-// ⚠️ [수정] 'currentHour'를 두 번째 인자로 받도록 수정
+// ⚠️ [수정] 'async' 키워드가 여기에 있어야 합니다.
 async function generatePolicyMessage(data, currentHour) {
   const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
-  // ... (precipText, windChillText 생성 로직은 동일) ...
-  // ... (위 1번 항목의 새 'prompt' 변수 내용) ...
-  // ... (axios 호출 및 응답 처리 로직은 동일) ...
-}
 
-  // ⚠️ [수정] 강수 형태 로직: 강수 확률(data.precipProb)을 먼저 확인
+  // (강수 형태 로직)
   let precipText = "";
   if (data.precipProb === 0) {
-      // 1. 강수 확률이 0%이면, PTY 코드와 상관없이 무조건 '없음'으로 고정
       precipText = "없음";
   } else {
-      // 2. 강수 확률이 0%가 아닐 때만 PTY 코드를 해석
       switch (data.precipType) {
           case '1': precipText = "비"; break;
           case '2': precipText = "비/눈"; break;
@@ -410,16 +404,15 @@ async function generatePolicyMessage(data, currentHour) {
           case '5': precipText = "빗방울"; break;
           case '6': precipText = "빗방울/눈날림"; break;
           case '7': precipText = "눈날림"; break;
-          case '0': // 0%는 아니지만 PTY 코드가 '없음'인 경우
-          default:  // 알 수 없는 코드
-              precipText = "없음 (강수 확률 낮음)"; // (예: 10% 확률이지만 비/눈은 아님)
+          default:  
+              precipText = "없음 (강수 확률 낮음)";
       }
   }
   
   let tempRangeText = "";
   if (data.tempRange !== null) tempRangeText = `(오늘 일교차: ${data.tempRange.toFixed(1)}℃)`;
 
-  // (이전 답변에서 수정한 체감온도 로직)
+  // (체감온도 로직)
   let windChillText = ""; 
   if (data.windChill !== null) {
       windChillText = `(체감 온도: ${data.windChill}℃)`;
@@ -433,8 +426,7 @@ async function generatePolicyMessage(data, currentHour) {
       }
   }
   
-// [ 📄 index.js - generatePolicyMessage 함수 내부 ]
-
+  // (프롬프트 시작)
   const prompt = `
     당신은 날씨 데이터를 분석해 "그래서 뭘 해야 하는지"를 알려주는 친절한 '날씨 알리미'입니다. 어투는 긍정적이고 기분 좋게 해주세요.
 
@@ -462,6 +454,7 @@ async function generatePolicyMessage(data, currentHour) {
   
   const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
   
+  // ⚠️ [수정] try...catch 블록이 여기서 시작됩니다.
   try {
     const response = await axios.post(GEMINI_URL, {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -474,15 +467,14 @@ async function generatePolicyMessage(data, currentHour) {
         return parts[0].text.trim();
       }
     }
-    
+   {
     console.error("Gemini API 호출은 성공했으나, 유효한 'candidates'가 없습니다.");
     console.log("전체 API 응답:", JSON.stringify(response.data, null, 2));
     return "🚨 AI가 행동 지침 생성에 실패했습니다. (API 응답 없음)";
-
+  }
   } catch (e) {
     if (e.response) {
       console.error("Gemini API 호출 실패 (HTTP 오류):", e.response.status, e.response.data);
-{
     } else {
       console.error("Gemini API 응답 처리 오류:", e.message);
     }
