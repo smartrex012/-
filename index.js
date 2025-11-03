@@ -524,7 +524,52 @@ async function sendChannelMessage(channelId, messageText, channelName) {
 // =========================================================================
 // 5. ⚠️ [수정] UptimeRobot 핑(Ping) 및 Webhook 리스너
 // =========================================================================
+// [ 📄 index.js ]
 
+// ... (sendChannelMessage 함수가 끝난 직후) ...
+
+
+/**
+ * (NEW) 새 멤버를 Subscribers 시트에 미리 등록하는 함수
+ */
+async function preRegisterUser(member) {
+  try {
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
+    if (!sheet) throw new Error("Subscribers 시트를 찾을 수 없습니다.");
+
+    await sheet.loadHeaderRow();
+    const rows = await sheet.getRows();
+    
+    // 이미 등록된 사용자인지 확인 (나갔다가 다시 들어온 경우)
+    const existingUser = rows.find(row => row.get('ID').toString() === member.id.toString());
+
+    if (!existingUser) {
+      // LocationName에는 사용자의 현재 닉네임을, NX/NY는 비워둔 채로 추가
+      await sheet.addRow({
+        Type: "Private",
+        ID: member.id,
+        LocationName: member.displayName, // 닉네임 저장
+        NX: "", // 비워둠
+        NY: ""  // 비워둠
+      });
+    } else {
+      console.log(`(사용자 ${member.user.tag}는 이미 등록되어 있습니다. pre-register를 건너뜁니다.)`);
+    }
+  } catch (e) {
+    // 봇 실행이 멈추지 않도록 오류를 잡아서 로깅만 함
+    console.error(`preRegisterUser 함수 오류:`, e);
+  }
+}
+
+
+// =========================================================================
+// 5. ⚠️ [수정] UptimeRobot 핑(Ping) 및 Webhook 리스너
+// =========================================================================
+
+// (NEW) Render Secrets에서 Webhook 비밀 키를 불러옵니다.
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
+// ... (이하 http.createServer 코드) ...
 // (NEW) Render Secrets에서 Webhook 비밀 키를 불러옵니다.
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
 
