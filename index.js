@@ -25,7 +25,13 @@ const serviceAccountAuth = new JWT({
 });
 const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// ⚠️ [수정] GuildMembers 인텐트를 추가합니다.
+const client = new Client({ 
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers // 👈 [추가]
+  ] 
+});
 
 // 🟡 [수정] 봇 시작 시 1회만 시트 정보 로드 (효율화)
 (async () => {
@@ -158,6 +164,45 @@ function getKSTDate(date) {
   const minute = kst.getUTCMinutes();
   return { stringDate: `${year}${month}${day}`, hour, minute };
 }
+// [ 📄 index.js ]
+
+// =========================================================================
+// (NEW) 새 멤버 서버 입장 시 환영 DM 자동 발송
+// =========================================================================
+client.on(Events.GuildMemberAdd, async member => {
+  console.log(`새로운 멤버가 서버에 참여했습니다: ${member.user.tag}`);
+
+  // ⚠️ (필수) 여기에 본인의 Google Form URL을 입력하세요.
+  const GOOGLE_FORM_URL = "httpsDELETETHIS://docs.google.com/forms/your-form-url-here"; 
+
+  const welcomeMessage = `
+안녕하세요, ${member.user.username}님! 🌦️ 날씨 알리미 봇 서버에 오신 것을 환영합니다.
+
+저는 여러분이 계신 지역의 날씨를 알려드리는 봇입니다.
+
+**[ 1단계: 서비스 이용 등록 (필수) ]**
+봇을 이용하시려면 먼저 아래 Google Form 링크를 통해 **'Discord ID'**와 **'날씨를 받을 동네 이름'**을 등록해 주세요.
+(정확한 '동' 이름 (예: 회기동)을 입력하시면 가장 정확한 예보를 받으실 수 있습니다.)
+> ${GOOGLE_FORM_URL}
+
+**[ 2단계: 날씨 정보 받기 (DM) ]**
+등록이 완료된 후, 이 서버의 아무 채널에서나 \`/weather\` 명령어를 입력하시면, 
+등록하신 위치의 최신 날씨 정보를 **DM(개인 메시지)**으로 즉시 보내드립니다.
+
+**[ 3단계: 아침 자동 알림 (공용 채널) ]**
+매일 아침 6시 50분, 'Public'으로 등록된 공용 알림 채널에 오늘의 날씨 브리핑이 전송됩니다.
+
+잘 부탁드립니다!
+`;
+
+  // 봇이 멤버에게 DM을 보냅니다.
+  try {
+      await member.send(welcomeMessage);
+      console.log(`${member.user.tag}님에게 환영 DM을 보냈습니다.`);
+  } catch (e) {
+      console.error(`${member.user.tag}님에게 DM을 보내는 데 실패했습니다. (DM이 차단되었을 수 있습니다)`);
+  }
+});
 
 // [ 📄 index.js ]
 
