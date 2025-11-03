@@ -564,55 +564,42 @@ async function preRegisterUser(member) {
   }
 }
 
-
 // =========================================================================
 // 5. ⚠️ [수정] UptimeRobot 핑(Ping) 및 Webhook 리스너
 // =========================================================================
 
-// ⚠️ [삭제] 'const WEBHOOK_SECRET = ...' 줄을 삭제 (파일 맨 위로 이동했음)
-
 const PORT = process.env.PORT || 10000; 
 http.createServer(async (req, res) => {
   try {
-    // 1. UptimeRobot 핑 처리 (기존)
-    if (req.method === 'GET' && req.url === '/') {
+    // 1. ⚠️ [수정] HEAD 요청도 허용하도록 변경
+    if ((req.method === 'GET' || req.method === 'HEAD') && req.url === '/') {
       res.writeHead(200, {'Content-Type': 'text/plain'});
       res.end('Discord bot is alive and listening for pings!');
       return;
     }
 
-    // 2. (NEW) Google Form 완료 Webhook 처리
+    // 2. Google Form 완료 Webhook 처리 (변경 없음)
     if (req.method === 'POST' && req.url === '/registration-complete') {
+      // ... (Webhook 내부 로직은 그대로) ...
       let body = '';
-      req.on('data', chunk => {
-        body += chunk.toString(); // convert Buffer to string
-      });
+      req.on('data', chunk => { body += chunk.toString(); });
       req.on('end', async () => {
         try {
           const data = JSON.parse(body);
-          
-          // 3. (NEW) 보안 키 확인 (이제 파일 맨 위에서 WEBHOOK_SECRET를 읽어옴)
           if (!WEBHOOK_SECRET || data.secret !== WEBHOOK_SECRET) {
-            console.warn("Webhook 호출 실패: 잘못된 Secret Key");
             res.writeHead(403, {'Content-Type': 'text/plain'});
             res.end('Forbidden: Invalid secret');
             return;
           }
-
-          // 4. (NEW) DM 발송 함수 호출
           if (data.userId) {
             await sendRegistrationCompleteDM(data.userId);
-            console.log(`Webhook 수신: ${data.userId}에게 등록 완료 DM 발송 시도.`);
             res.writeHead(200, {'Content-Type': 'text/plain'});
             res.end('Webhook received and DM queued.');
           } else {
-            // (이하 코드 동일)
-            console.warn("Webhook 호출 실패: userId가 없습니다.");
             res.writeHead(400, {'Content-Type': 'text/plain'});
             res.end('Bad Request: Missing userId');
           }
         } catch (e) {
-          console.error("Webhook body 파싱 오류:", e);
           res.writeHead(400, {'Content-Type': 'text/plain'});
           res.end('Bad Request');
         }
@@ -620,7 +607,7 @@ http.createServer(async (req, res) => {
       return;
     }
 
-    // 5. 그 외 모든 요청은 404
+    // 3. 그 외 모든 요청은 404
     res.writeHead(404, {'Content-Type': 'text/plain'});
     res.end('Not Found');
 
