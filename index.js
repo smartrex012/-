@@ -618,10 +618,11 @@ async function sendRegistrationCompleteDM(userId) {
       return;
     }
 
+    // ⚠️ [수정] /weather를 감싸는 문자를 혼동 없는 작은따옴표(')로 변경
     const message = `
 🎉 **등록이 완료되었습니다!**
 
-이제 이 서버의 아무 채널에서나 `/weather` 명령어를 입력하시면,
+이제 이 서버의 아무 채널에서나 '/weather' 명령어를 입력하시면,
 등록하신 위치의 최신 날씨 정보를 **DM(개인 메시지)**으로 즉시 보내드립니다.
 `;
 
@@ -631,7 +632,3 @@ async function sendRegistrationCompleteDM(userId) {
     console.error(`[DM 실패] ${userId}님에게 등록 완료 DM을 보내는 중 오류 발생:`, e);
   }
 }
-
-// (NEW) GuildMemberAdd 이벤트 핸들러와 preRegisterUser 함수가 이 위에 있어야 합니다.
-
-client.login(BOT_TOKEN);
