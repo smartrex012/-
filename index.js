@@ -387,7 +387,7 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
   }
 }
 
-// ⚠️ [수정] 프롬프트와 문법 오류가 모두 수정된 최종본입니다.
+// ⚠️ [수정] 'async' 키워드와, 함수 내부의 문법 오류가 모두 수정된 최종본입니다.
 async function generatePolicyMessage(data, currentHour) {
   const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
 
@@ -426,7 +426,7 @@ async function generatePolicyMessage(data, currentHour) {
       }
   }
   
-  // ⚠️ [수정] 프롬프트를 '표'가 아닌 '목록' 형식으로 변경
+  // (프롬프트 시작)
   const prompt = `
     당신은 날씨 데이터를 분석해 "그래서 뭘 해야 하는지"를 알려주는 친절한 '날씨 알리미'입니다. 어투는 긍정적이고 기분 좋게 해주세요.
 
@@ -470,8 +470,7 @@ async function generatePolicyMessage(data, currentHour) {
       }
     }
     
-    // ⚠️ [수정] 문법 오류(불필요한 중괄호)를 삭제했습니다.
-.
+    // ⚠️ [수정] 오류가 있던 마침표(.)를 삭제했습니다.
     console.error("Gemini API 호출은 성공했으나, 유효한 'candidates'가 없습니다.");
     console.log("전체 API 응답:", JSON.stringify(response.data, null, 2));
     return "🚨 AI가 행동 지침 생성에 실패했습니다. (API 응답 없음)";
@@ -479,13 +478,14 @@ async function generatePolicyMessage(data, currentHour) {
   } catch (e) {
     if (e.response) {
       console.error("Gemini API 호출 실패 (HTTP 오류):", e.response.status, e.response.data);
-      // ⚠️ [수정] 문법 오류(s 오타)를 삭제했습니다.
+      // ⚠️ [수정] 오류가 있던 's' 오타를 삭제했습니다.
     } else {
       console.error("Gemini API 응답 처리 오류:", e.message);
     }
     return "🚨 AI가 행동 지침 생성에 실패했습니다.";
   }
 }
+
 async function getUserInfo(userId) { // ⚠️ 이름 변경: getUserLocation -> getUserInfo
   try {
     await doc.loadInfo(); 
