@@ -381,13 +381,45 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
 async function generatePolicyMessage(data) {
   const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
 
-  // ⚠️ [수정] 기상청 API 명세서에 따라 PTY 코드를 수정합니다. (3: 눈, 4: 소나기 등)
-  const precipText = (data.precipType === '0') ? '없음' : (data.precipType === '1') ? '비' : (data.precipType === '2') ? '비/눈' : (data.precipType === '3') ? '눈' : (data.precipType === '4') ? '소나기' : (data.precipType === '5') ? '빗방울' : (data.precipType === '6') ? '빗방울/눈날림' : (data.precipType === '7') ? '눈날림' : '알 수 없음';
-  
-  let tempRangeText = "", windChillText = "";
-  if (data.tempRange !== null) tempRangeText = `(오늘 일교차: ${data.tempRange.toFixed(1)}℃)`;
-  if (data.windChill !== null) windChillText = `(체감 온도: ${data.windChill}℃)`;
+  // ⚠️ [수정] 강수 형태 로직: 강수 확률(data.precipProb)을 먼저 확인
+  let precipText = "";
+  if (data.precipProb === 0) {
+      // 1. 강수 확률이 0%이면, PTY 코드와 상관없이 무조건 '없음'으로 고정
+      precipText = "없음";
+  } else {
+      // 2. 강수 확률이 0%가 아닐 때만 PTY 코드를 해석
+      switch (data.precipType) {
+          case '1': precipText = "비"; break;
+          case '2': precipText = "비/눈"; break;
+          case '3': precipText = "눈"; break;
+          case '4': precipText = "소나기"; break;
+          case '5': precipText = "빗방울"; break;
+          case '6': precipText = "빗방울/눈날림"; break;
+          case '7': precipText = "눈날림"; break;
+          case '0': // 0%는 아니지만 PTY 코드가 '없음'인 경우
+          default:  // 알 수 없는 코드
+              precipText = "없음 (강수 확률 낮음)"; // (예: 10% 확률이지만 비/눈은 아님)
+      }
+  }
   
+  let tempRangeText = "";
+  if (data.tempRange !== null) tempRangeText = `(오늘 일교차: ${data.tempRange.toFixed(1)}℃)`;
+
+  // (이전 답변에서 수정한 체감온도 로직)
+  let windChillText = ""; 
+  if (data.windChill !== null) {
+      windChillText = `(체감 온도: ${data.windChill}℃)`;
+  } else {
+      const T = data.temp; 
+      const V_kmh = (data.wsd ?? 0) * 3.6; 
+      if (T > 10) {
+          windChillText = "(체감 온도: 기온이 10℃ 이상일 때는 실제 기온과 비슷합니다.)";
+      } else if (V_kmh < 4.8) {
+          windChillText = "(체감 온도: 바람이 약해, 실제 기온과 비슷합니다.)";
+      }
+  }
+  
+  // (이하 프롬프트 및 API 호출 로직은 동일)
   const prompt = `
     당신은 날씨 데이터를 분석해 "그래서 뭘 해야 하는지"만 알려주는 '날씨 알리미'입니다. 어투는 '방금 막 기상한 이들이 기분 좋게 받아들일 수 있는 정도'로 해주세요. 
     [예보 데이터]
@@ -398,7 +430,7 @@ async function generatePolicyMessage(data) {
     - 강수 형태: ${precipText}
     - 강수 확률: ${data.precipProb}%
     - ${tempRangeText}
-    - ${windChillText}
+    - ${windChillText} 
     규칙:
     1. ${data.locationName}의 날씨를 알고 싶어하는 사용자가 ${data.forecastHour}에 참고해야 할 구체적인 행동 지침(우산, 활동)과 옷차림(상의/하의)을 먼저 제시하세요. 옷차림의 자세한 예시도 제시하세요 (예: 니트나 면 소재의 긴팔 상의)
     2. [체감온도/일교차 반영] '체감 온도'나 '일교차' 정보가 있다면, 옷차림 추천 시 (예: "바람이 불어 체감온도가 낮으니 따뜻하게 입으세요", "일교차가 크니 겉옷을 챙기세요") 꼭 반영하세요.
@@ -415,30 +447,24 @@ async function generatePolicyMessage(data) {
       generationConfig: { temperature: 0.8, maxOutputTokens: 4096}
     });
     
-    // ⚠️ [수정] API 응답에 'candidates'가 있는지, 비어있지 않은지 확인합니다.
-    if (response.data && response.data.candidates && response.data.candidates.length > 0) {
-      // ⚠️ [수정] content.parts가 있는지도 확인합니다.
-      const parts = response.data.candidates[0].content.parts;
-      if (parts && parts.length > 0) {
-        return parts[0].text.trim();
-      }
-    }
-    
-    // ⚠️ [수정] candidates가 없거나 비어있는 경우 (예: 세이프티 설정 차단)
-    console.error("Gemini API 호출은 성공했으나, 유효한 'candidates'가 없습니다.");
-    // 봇이 차단된 이유(예: "blockReason": "SAFETY")를 확인하기 위해 전체 응답을 로깅합니다.
-    console.log("전체 API 응답:", JSON.stringify(response.data, null, 2));
-    return "🚨 AI가 행동 지침 생성에 실패했습니다. (API 응답 없음)";
+    if (response.data && response.data.candidates && response.data.candidates.length > 0) {
+      const parts = response.data.candidates[0].content.parts;
+      if (parts && parts.length > 0) {
+        return parts[0].text.trim();
+      }
+    }
+    
+    console.error("Gemini API 호출은 성공했으나, 유효한 'candidates'가 없습니다.");
+    console.log("전체 API 응답:", JSON.stringify(response.data, null, 2));
+    return "🚨 AI가 행동 지침 생성에 실패했습니다. (API 응답 없음)";
 
   } catch (e) {
-    // ⚠️ [수정] e.response가 있는 경우(axios 오류)와 없는 경우(일반 JS 오류)를 구분하여 로깅합니다.
     if (e.response) {
-      // 4xx, 5xx 응답 등 axios 오류
-      console.error("Gemini API 호출 실패 (HTTP 오류):", e.response.status, e.response.data);
-    } else {
-      // 'candidates[0]' 접근 오류 등 코드 내 JS 오류
-      console.error("Gemini API 응답 처리 오류:", e.message);
-    }
+      console.error("Gemini API 호출 실패 (HTTP 오류):", e.response.status, e.response.data);
+{
+    } else {
+      console.error("Gemini API 응답 처리 오류:", e.message);
+    }
     return "🚨 AI가 행동 지침 생성에 실패했습니다.";
   }
 }
