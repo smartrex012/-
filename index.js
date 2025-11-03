@@ -230,7 +230,7 @@ client.on(Events.GuildMemberAdd, async member => {
     const welcomeChannel = await client.channels.fetch(WELCOME_CHANNEL_ID);
     if (welcomeChannel && welcomeChannel.isTextBased()) {
       // <@member.id>가 멘션(태그)입니다.
-      await welcomeChannel.send(`<@${member.id}>님 반갑습니다! 모든 기능을 사용하기 위해서 먼저, DM을 확인해주시겠어요? 💌`);
+      await welcomeChannel.send(`<@${member.id}>님 반갑습니다! 모든 기능을 사용하기 위해서 먼저, DM을 확인해주시겠어요? `);
       console.log(`${member.user.tag}님을 위한 공개 환영 메시지를 보냈습니다.`);
     } else {
       console.warn(`WELCOME_CHANNEL_ID (${WELCOME_CHANNEL_ID})를 찾을 수 없거나 텍스트 채널이 아닙니다.`);
