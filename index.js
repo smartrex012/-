@@ -16,6 +16,7 @@ const FORECAST_SHEET_NAME = "ForecastData";
 const CLIENT_ID = process.env.CLIENT_ID; // ⚠️ Secrets에 봇의 Application ID 저장 필수
 const TEST_GUILD_ID = process.env.TEST_GUILD_ID; // ⚠️ [권장] Secrets에 '서버 ID'를 이 이름으로 저장하세요.
 const GOOGLE_SERVICE_ACCOUNT_CREDS = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_CREDS);
+const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID;
 
 // Google Sheets 인증
 const serviceAccountAuth = new JWT({
@@ -166,26 +167,23 @@ function getKSTDate(date) {
 }
 // [ 📄 index.js ]
 
-// [ 📄 index.js ]
-
 // =========================================================================
-// (NEW) 새 멤버 서버 입장 시 환영 DM 발송 및 시트 자동 등록
+// (수정) 새 멤버 서버 입장 시 (1)시트 등록, (2)DM 발송, (3)공개 환영
 // =========================================================================
 client.on(Events.GuildMemberAdd, async member => {
   console.log(`새로운 멤버가 서버에 참여했습니다: ${member.user.tag} (ID: ${member.id})`);
 
-  // 1. (NEW) Subscribers 시트에 사용자 미리 등록
+  // --- 1. (기존) Subscribers 시트에 사용자 미리 등록 ---
   try {
     await preRegisterUser(member);
     console.log(`${member.user.tag}님을 Subscribers 시트에 미리 등록했습니다.`);
   } catch (e) {
     console.error(`${member.user.tag}님을 시트에 미리 등록하는 데 실패했습니다:`, e);
-    // (실패해도 DM은 보내도록 계속 진행)
   }
 
-  // 2. 환영 DM 발송
+  // --- 2. (기존) 환영 DM 발송 ---
   // ⚠️ (필수) 여기에 본인의 Google Form URL을 입력하세요.
-  const GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfSvSOHML7KNSdXei3oIDilAyTDSaxwO2SieGw322JnCsrA3Q/viewform?usp=dialog"; 
+  const GOOGLE_FORM_URL = "httpsDELETETHIS://docs.google.com/forms/your-form-url-here"; 
 
   const welcomeMessage = `
 안녕하세요, ${member.user.username}님! 🌦️ 날씨 알리미 봇 서버에 오신 것을 환영합니다.
@@ -201,51 +199,35 @@ client.on(Events.GuildMemberAdd, async member => {
 (정확한 '동' 이름 (예: 회기동)을 입력하시면 가장 정확한 예보를 받으실 수 있습니다.)
 > ${GOOGLE_FORM_URL}
 
-등록이 완료되면, \`/weather\` 명령어를 사용하실 수 있습니다. 
-이 명령어를 사용하면, DM으로 신청하신 위치의 날씨와 행동지침을 받아보실 수 있습니다.
+등록이 완료되면, \`/weather\` 명령어를 DM으로 이용하실 수 있습니다.
 `;
 
-  // 봇이 멤버에게 DM을 보냅니다.
   try {
       await member.send(welcomeMessage);
       console.log(`${member.user.tag}님에게 환영 DM을 보냈습니다.`);
   } catch (e) {
       console.error(`${member.user.tag}님에게 DM을 보내는 데 실패했습니다. (DM이 차단되었을 수 있습니다)`);
   }
-});
 
-/**
- * (NEW) 새 멤버를 Subscribers 시트에 미리 등록하는 함수
- */
-async function preRegisterUser(member) {
+  // --- 3. ⚠️ (NEW) 환영 채널에 공개 메시지 발송 ---
+  if (!WELCOME_CHANNEL_ID) {
+    console.log("WELCOME_CHANNEL_ID가 설정되지 않아, 공개 환영 메시지를 건너뜁니다.");
+    return; // DM만 보내고 함수 종료
+  }
+
   try {
-    await doc.loadInfo();
-    const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
-    if (!sheet) throw new Error("Subscribers 시트를 찾을 수 없습니다.");
-
-    await sheet.loadHeaderRow();
-    const rows = await sheet.getRows();
-    
-    // 이미 등록된 사용자인지 확인 (나갔다가 다시 들어온 경우)
-    const existingUser = rows.find(row => row.get('ID').toString() === member.id.toString());
-
-    if (!existingUser) {
-      // ⚠️ [수정] LocationName에는 사용자의 현재 닉네임을, NX/NY는 비워둔 채로 추가
-      await sheet.addRow({
-        Type: "Private",
-        ID: member.id,
-        LocationName: member.displayName, // 닉네임 저장
-        NX: "", // 비워둠
-        NY: ""  // 비워둠
-      });
+    const welcomeChannel = await client.channels.fetch(WELCOME_CHANNEL_ID);
+    if (welcomeChannel && welcomeChannel.isTextBased()) {
+      // <@member.id>가 멘션(태그)입니다.
+      await welcomeChannel.send(`<@${member.id}>님 반갑습니다! 모든 기능을 사용하기 위해서 먼저, DM을 확인해주시겠어요? 💌`);
+      console.log(`${member.user.tag}님을 위한 공개 환영 메시지를 보냈습니다.`);
     } else {
-      console.log(`(사용자 ${member.user.tag}는 이미 등록되어 있습니다. pre-register를 건너뜁니다.)`);
+      console.warn(`WELCOME_CHANNEL_ID (${WELCOME_CHANNEL_ID})를 찾을 수 없거나 텍스트 채널이 아닙니다.`);
     }
   } catch (e) {
-    // 봇 실행이 멈추지 않도록 오류를 잡아서 로깅만 함
-    console.error(`preRegisterUser 함수 오류:`, e);
+    console.error("공개 환영 메시지 전송 실패:", e);
   }
-}
+});
 
 // [ 📄 index.js ]
 
