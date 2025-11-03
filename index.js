@@ -185,7 +185,7 @@ client.on(Events.GuildMemberAdd, async member => {
 
   // --- 2. (기존) 환영 DM 발송 ---
   // ⚠️ (필수) 여기에 본인의 Google Form URL을 입력하세요.
-  const GOOGLE_FORM_URL = "httpsDELETETHIS://docs.google.com/forms/your-form-url-here"; 
+  const GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfSvSOHML7KNSdXei3oIDilAyTDSaxwO2SieGw322JnCsrA3Q/viewform?usp=sharing&ouid=111896153179106982227"; 
 
   const welcomeMessage = `
 안녕하세요, ${member.user.username}님! 🌦️ 날씨 알리미 봇 서버에 오신 것을 환영합니다.
@@ -201,7 +201,7 @@ client.on(Events.GuildMemberAdd, async member => {
 (정확한 '동' 이름 (예: 회기동)을 입력하시면 가장 정확한 예보를 받으실 수 있습니다.)
 > ${GOOGLE_FORM_URL}
 
-등록이 완료되면, \`/weather\` 명령어를 DM으로 이용하실 수 있습니다.
+등록이 완료되면, \`/weather\` 명령어를 사용하실 수 있습니다. 이 명령어는 설정하신 위치의 날씨 정보를 즉각 받아볼 수 있게 합니다!
 `;
 
   try {
