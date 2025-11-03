@@ -569,16 +569,6 @@ async function preRegisterUser(member) {
 // 5. ⚠️ [수정] UptimeRobot 핑(Ping) 및 Webhook 리스너
 // =========================================================================
 
-// (NEW) Render Secrets에서 Webhook 비밀 키를 불러옵니다.
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
-// ... (이하 http.createServer 코드) ...
-// (NEW) Render Secrets에서 Webhook 비밀 키를 불러옵니다.
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET; 
-
-// =========================================================================
-// 5. ⚠️ [수정] UptimeRobot 핑(Ping) 및 Webhook 리스너
-// =========================================================================
-
 // ⚠️ [삭제] 'const WEBHOOK_SECRET = ...' 줄을 삭제 (파일 맨 위로 이동했음)
 
 const PORT = process.env.PORT || 10000; 
