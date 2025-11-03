@@ -84,18 +84,21 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
+   // [ 📄 index.js - client.on(Events.InteractionCreate, ...) 내부 ]
+
+// ... (try 블록 내부) ...
     const times = getApiTime("OnDemand"); 
-    // ⚠️ [수정] readDataFromSheet에 userInfo.nx, userInfo.ny 전달
+    // ⚠️ [추가] 현재 시간(KST)을 가져옵니다.
+    const currentHourKST = getKSTDate(new Date()).hour;
+
     const extractedData = await readDataFromSheet(times.forecastTime, times.forecastHourForPrompt, times.forecastDate, userInfo.nx, userInfo.ny);
-    
-    if (!extractedData) {
-      await interaction.editReply("🚨 Google Sheet에 아직 데이터가 없거나 읽기에 실패했습니다. (백그라운드 '일꾼'이 아직 데이터를 저장하지 못했거나, 해당 지역 데이터가 없습니다.)");
-      return;
-    }
-    
+// ... (if (!extractedData) ... 블록) ...
     extractedData.locationName = userInfo.locationName; // ⚠️ [수정] userInfo에서 이름 사용
-    const finalMessage = await generatePolicyMessage(extractedData);
+    
+    // ⚠️ [수정] 현재 시간을 Gemini 함수에 전달합니다.
+    const finalMessage = await generatePolicyMessage(extractedData, currentHourKST); 
     await interaction.user.send(finalMessage);
+// ... (이하 동일) ...
     await interaction.editReply(`✅ ${userName}님의 DM으로 [${userInfo.locationName}] 날씨 정보를 보냈어요!`);
 
   } catch (e) {
@@ -139,10 +142,16 @@ cron.schedule('50 6 * * *', async () => {
           continue; // 다음 채널로 이동
         }
 
-        extractedData.locationName = channel.locationName; // 채널에 등록된 위치 이름 사용
-        const finalMessage = await generatePolicyMessage(extractedData);
+        // [ 📄 index.js - cron.schedule(...) 내부 ]
 
-        await sendChannelMessage(channel.channelId, finalMessage, channel.name);
+// ... (for (const channel of publicChannels) ... 루프 내부) ...
+        extractedData.locationName = channel.locationName; // 채널에 등록된 위치 이름 사용
+        
+        // ⚠️ [수정] 아침 알림은 '6'시(아침) 기준으로 인사를 보냅니다.
+        const finalMessage = await generatePolicyMessage(extractedData, 6); 
+
+        await sendChannelMessage(channel.channelId, finalMessage, channel.name);
+// ... (이하 동일) ...
       } catch (e) {
         console.error(`채널 [${channel.name}] 처리 중 오류 발생:`, e);
       }
@@ -378,8 +387,13 @@ async function readDataFromSheet(forecastTime, forecastHourForPrompt, forecastDa
   }
 }
 
-async function generatePolicyMessage(data) {
+// ⚠️ [수정] 'currentHour'를 두 번째 인자로 받도록 수정
+async function generatePolicyMessage(data, currentHour) {
   const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
+  // ... (precipText, windChillText 생성 로직은 동일) ...
+  // ... (위 1번 항목의 새 'prompt' 변수 내용) ...
+  // ... (axios 호출 및 응답 처리 로직은 동일) ...
+}
 
   // ⚠️ [수정] 강수 형태 로직: 강수 확률(data.precipProb)을 먼저 확인
   let precipText = "";
@@ -419,24 +433,31 @@ async function generatePolicyMessage(data) {
       }
   }
   
-  // (이하 프롬프트 및 API 호출 로직은 동일)
+// [ 📄 index.js - generatePolicyMessage 함수 내부 ]
+
   const prompt = `
-    당신은 날씨 데이터를 분석해 "그래서 뭘 해야 하는지"만 알려주는 '날씨 알리미'입니다. 어투는 '기분 좋게 받아들일 수 있는 정도'로 해주세요. 제가 이 메시지를 보내는 시간에 맞춰서 알맞는 인사를 해주세요.
+    당신은 날씨 데이터를 분석해 "그래서 뭘 해야 하는지"를 알려주는 친절한 '날씨 알리미'입니다. 어투는 긍정적이고 기분 좋게 해주세요.
+
     [예보 데이터]
+    - 현재 요청 시간: ${currentHour}시 (0-23시 사이 24시간제)
     - 위치: ${data.locationName}
-    - 시간: ${data.forecastHour}
-    - 현재 기온: ${data.temp}℃
+    - 예보 시간: ${data.forecastHour}
+    - 기온: ${data.temp}℃
     - 하늘 상태: ${skyText}
     - 강수 형태: ${precipText}
     - 강수 확률: ${data.precipProb}%
-    - ${tempRangeText}
-    - ${windChillText} 
-    규칙:
-    1. ${data.locationName}의 날씨를 알고 싶어하는 사용자가 ${data.forecastHour}에 참고해야 할 구체적인 행동 지침(우산, 활동)과 옷차림(상의/하의)을 먼저 제시하세요. 옷차림의 자세한 예시도 제시하세요 (예: 니트나 면 소재의 긴팔 상의)
-    2. [체감온도/일교차 반영] '체감 온도'나 '일교차' 정보가 있다면, 옷차림 추천 시 (예: "바람이 불어 체감온도가 낮으니 따뜻하게 입으세요", "일교차가 크니 겉옷을 챙기세요") 꼭 반영하세요.
-    3. [옷차림 이모지] 옷차림 추천 시 🧥, 👕, 👖 같은 이모지를 사용하세요.
-    4. [날씨 설명] 행동 지침 제시 후, 한 줄 띄우고 ${data.locationName}의 날씨 요약을 간략히 설명하세요. '[날씨 설명]'으로 문장을 시작하고, 현재 기온, 하늘 상태, 강수 확률, 형태, 체감온도, 일교차를 표 형식으로 모두 소개하세요.
-    5. [날씨 이모지] 날씨 요약 끝에 날씨를 표현하는 ☀️, ☁️, 🌧️ 같은 이모지 1개를 붙여주세요.
+    - 일교차 정보: ${tempRangeText}
+    - 체감온도 정보: ${windChillText} 
+
+    [규칙]
+    1.  **인사말 (필수):** [현재 요청 시간]을 바탕으로 "좋은 아침이에요!", "점심 식사는 하셨나요?", "편안한 저녁 보내고 계신가요?" 등 시간대에 맞는 인사를 **가장 첫 문장**에 넣어주세요.
+    2.  **행동 지침:** 인사말 다음, [${data.forecastHour} 행동 지침]이라는 제목으로 ${data.locationName}의 날씨를 바탕으로 우산 필요 여부(강수 확률/형태), 야외 활동 적합성 등 1-2가지 핵심 조언을 하세요.
+    3.  **옷차림 추천:** 다음으로, [${data.forecastHour} 옷차림]이라는 제목으로 🧥 상의, 👕 하의, 🧣 기타(겉옷/액세서리)로 나누어 구체적인 아이템(예: '두툼한 니트', '기모 바지', '경량 패딩')을 추천하세요.
+    4.  **데이터 반영 (필수):** 옷차림 추천 시, [일교차 정보]와 [체감온도 정보]를 반드시 말로 풀어서 반영하세요. (예: "일교차가 크니 얇은 겉옷을 챙기세요", "바람이 불어 체감온도가 낮으니 목도리가 좋겠어요", "바람이 약해 실제 기온과 비슷할 거예요.")
+    5.  **날씨 요약표 (필수):** 마지막으로, '[${data.locationName} (${data.forecastHour}) 날씨 요약]'이라는 제목으로 아래 데이터를 **표(테이블) 형식**으로 깔끔하게 정리하세요.
+        * 항목: 기온, 하늘 상태, 강수 확률, 강수 형태, 체감 온도, 일교차
+        * 내용: [예보 데이터]의 값을 그대로 사용하세요. (예: 체감 온도의 경우 '${windChillText}'에 담긴 "바람이 약해..." 설명을 그대로 표에 넣으세요.)
+    6.  **마무리 이모지:** 표 아래에 날씨에 어울리는 ☀️, ☁️, 🌧️ 같은 이모지 1개를 붙이며 마무리하세요.
   `;
   
   const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
