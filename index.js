@@ -484,7 +484,42 @@ async function generatePolicyMessage(data, currentHour) {
     return "🚨 AI가 행동 지침 생성에 실패했습니다.";
   }
 }
+// ... (generatePolicyMessage 함수가 끝나는 곳) ...
 
+// ... (generatePolicyMessage 함수가 끝나는 곳) ...
+
+/**
+ * [FIX] 구독자 시트에서 사용자의 등록 정보를 가져옵니다.
+ */
+async function getUserInfo(userId) {
+  try {
+    await doc.loadInfo(); 
+    const sheet = doc.sheetsByTitle[SUBSCRIBER_SHEET_NAME];
+    if (!sheet) throw new Error("Subscribers 시트를 찾을 수 없습니다.");
+
+    await sheet.loadHeaderRow(); // Headers: Type, ID, LocationName, NX, NY
+    const rows = await sheet.getRows();
+    
+    const user = rows.find(row => row.get('Type') === 'Private' && row.get('ID').toString() == userId.toString());
+    
+    if (user) {
+      // 사용자의 위치 정보를 반환합니다.
+      return {
+        locationName: user.get('LocationName'),
+        nx: user.get('NX'),
+        ny: user.get('NY')
+      };
+    }
+    return null; // 사용자를 찾지 못함
+
+  } catch (e) {
+    console.error("구독자 시트(UserID) 읽기 오류:", e);
+    return null;
+  }
+}
+
+// ... (readSubscribers 함수가 시작되는 곳) ...
+// ... (readSubscribers 함수가 시작되는 곳) ...
 // [ 📄 index.js ]
 
 async function readSubscribers(type) {
