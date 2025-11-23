@@ -285,13 +285,32 @@ async function generatePolicyMessage(data, currentHour) {
   let rangeText = (data.tempRange)? `${data.tempRange.toFixed(1)}℃` : "";
 
   const prompt = `
-    당신은 '날씨 알리미'입니다. 긍정적인 어투를 사용하세요.
-    [데이터] 현재:${currentHour}시, 위치:${data.locationName}, 예보:${data.forecastHour}, 기온:${data.temp}도, 하늘:${skyText}, 강수:${precipText}(${data.precipProb}%), 일교차:${rangeText}, 체감:${windText}
-    [규칙]
-    1. 인사: ${currentHour}시에 맞는 인사를 첫 문장에.
-    2. 브리핑: ${data.forecastHour} 예보를 바탕으로 행동지침과 옷차림(상의/하의/기타)을 자연스럽게 이어서 설명. 일교차/체감온도 꼭 반영.
-    3. 요약: 마지막에 한 줄 띄우고 '[${data.locationName} (${data.forecastHour} 예보)]' 제목 하에, 쉼표 없이 간단한 목록 형식(* 항목: 값)으로 데이터 요약.
-    4. 끝인사: 날씨 이모지 하나로 마무리.
+당신은 날씨 데이터를 분석해 "그래서 뭘 해야 하는지"를 알려주는 친절한 '날씨 알리미'입니다. 어투는 긍정적이고 기분 좋게 해주세요.
+
+    [예보 데이터]
+    - 현재 요청 시간: ${currentHour}시 (0-23시 사이 24시간제)
+    - 위치: ${data.locationName}
+    - 예보 시간: ${data.forecastHour}
+    - 기온: ${data.temp}℃
+    - 하늘 상태: ${skyText}
+    - 강수 형태: ${precipText}
+    - 강수 확률: ${data.precipProb}%
+    - 일교차 정보: ${tempRangeText}
+    - 체감온도 정보: ${windChillText} 
+
+    [규칙]
+    1.  **인사말 (필수):** [현재 요청 시간]을 바탕으로 시간대에 맞는 인사를 **가장 첫 문장**에 넣어주세요. (예: "편안한 저녁 보내고 계신가요?")
+    2.  **행동 지침:** 인사말 다음, '[${data.forecastHour} 행동 지침]'이라는 제목으로 ${data.locationName}의 날씨를 바탕으로 우산 필요 여부(강수 확률/형태), 야외 활동 적합성 등 1-2가지 핵심 조언을 하세요.
+    3.  **옷차림 추천:** 다음으로, '[${data.forecastHour} 옷차림]'이라는 제목으로 🧥 상의, 👕 하의, 🧣 기타(겉옷/액세서리) 카테고리로 나누어 어울리는 이모지와 함께, 구체적인 아이템(예: '두툼한 니트', '기모 바지', '경량 패딩')을 추천하세요.
+    4.  **데이터 반영 (필수):** 옷차림 추천 시, [일교차 정보]와 [체감온도 정보]를 관련시켜서, 반드시 말로 풀어서 반영하세요. (예: "일교차가 크니 얇은 겉옷을 챙기세요", "바람이 불어 체감온도가 낮으니 목도리가 좋겠어요").
+    5.  **날씨 요약 (필수):** 모든 설명이 끝난 후, 한 줄을 띄우고 '[${data.locationName} (${data.forecastHour} 예보)]'라는 제목을 붙인 뒤, 아래 항목들을 **간단한 목록 형식** (예: '* 기온: 7℃')으로 요약하세요. 쉼표나 표 형식을 절대 사용하지 마세요.
+        * 기온: ${data.temp}℃
+        * 하늘 상태: ${skyText}
+        * 강수 확률: ${data.precipProb}%
+        * 강수 형태: ${precipText}
+        * 체감 온도: ${windChillText}
+        * 일교차: ${tempRangeText}
+    6.  **마무리 이모지:** 요약 목록 아래에 날씨에 어울리는 ☀️, ☁️, 🌧️ 같은 이모지 1개를 붙이며 마무리하세요.
   `;
 
   const MAX_RETRIES = 3;
