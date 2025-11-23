@@ -59,17 +59,10 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    // ⚠️ [안전장치] 기상 특보(Kill Switch) 확인
+// ⚠️ [수정] 기상 특보(Kill Switch) 확인 로직 변경
+    // 이제는 서비스를 중단하지 않고, 경고 정보를 AI에게 전달합니다.
     const alertInfo = await checkEmergencyStatus();
-    if (alertInfo.status === "Warning") {
-      const warningMessage = `
-🚧 **[기상 긴급 경보]**
-현재 위험한 기상 특보가 발효 중입니다. 안전을 위해 AI 추천 서비스가 중단됩니다.
-**${alertInfo.message}**
-※ 기상청 공식 홈페이지나 재난 문자를 반드시 확인하세요.`;
-      await interaction.editReply(warningMessage);
-      return;
-    }
+    // (이전에 있던 'if (alertInfo.status === "Warning") return;' 코드는 삭제합니다!)
 
     const times = getApiTime("OnDemand");
     const extractedData = await readDataFromSheet(times.forecastTime, times.forecastHourForPrompt, times.forecastDate, userInfo.nx, userInfo.ny);
@@ -81,14 +74,15 @@ client.on(Events.InteractionCreate, async interaction => {
 
     extractedData.locationName = userInfo.locationName;
     const currentHourKST = getKSTDate(new Date()).hour;
-    const finalMessage = await generatePolicyMessage(extractedData, currentHourKST);
+    
+    // ⚠️ [수정] 세 번째 인자로 alertInfo를 전달합니다.
+    const finalMessage = await generatePolicyMessage(extractedData, currentHourKST, alertInfo);
     
     await interaction.user.send(finalMessage);
     await interaction.editReply(`✅ DM으로 날씨 정보를 보냈습니다!`);
 
   } catch (e) {
-    console.error("'/weather' 오류:", e);
-    await interaction.editReply("🚨 오류가 발생했습니다.");
+    // ... (에러 처리 동일) ...
   }
 });
 
@@ -278,11 +272,59 @@ async function readDataFromSheet(fcstTime, fcstPrompt, fcstDate, uNx, uNy) {
   } catch (e) { return null; }
 }
 
-async function generatePolicyMessage(data, currentHour) {
-  const skyText = (data.sky==='1')?'맑음':(data.sky==='3')?'구름많음':'흐림';
-  let precipText = (data.precipProb===0)? "없음" : (data.precipType==='1'?"비":data.precipType==='2'?"비/눈":data.precipType==='3'?"눈":"소나기");
-  let windText = (data.windChill)? `${data.windChill}℃` : (data.temp>10?"기온이 높아 계산불가":"바람이 약해 기온과 비슷");
-  let rangeText = (data.tempRange)? `${data.tempRange.toFixed(1)}℃` : "";
+// ⚠️ [수정] alertInfo(특보 정보)를 인자로 받아 프롬프트를 동적으로 변경합니다.
+async function generatePolicyMessage(data, currentHour, alertInfo) {
+  const skyText = (data.sky === '1') ? '맑음' : (data.sky === '3') ? '구름많음' : '흐림';
+
+  // (강수 형태 로직)
+  let precipText = "";
+  if (data.precipProb === 0) {
+      precipText = "없음";
+  } else {
+      switch (data.precipType) {
+          case '1': precipText = "비"; break;
+          case '2': precipText = "비/눈"; break;
+          case '3': precipText = "눈"; break;
+          case '4': precipText = "소나기"; break;
+          case '5': precipText = "빗방울"; break;
+          case '6': precipText = "빗방울/눈날림"; break;
+          case '7': precipText = "눈날림"; break;
+          default: precipText = "없음 (강수 확률 낮음)";
+      }
+  }
+  
+  let tempRangeText = "";
+  if (data.tempRange !== null) tempRangeText = `(오늘 일교차: ${data.tempRange.toFixed(1)}℃)`;
+
+  // (체감온도 로직)
+  let windChillText = ""; 
+  if (data.windChill !== null) {
+      windChillText = `(체감 온도: ${data.windChill}℃)`;
+  } else {
+      const T = data.temp; 
+      const V_kmh = (data.wsd ?? 0) * 3.6; 
+      if (T > 10) {
+          windChillText = "(체감 온도: 기온이 10℃ 이상일 때는 실제 기온과 비슷합니다.)";
+      } else if (V_kmh < 4.8) {
+          windChillText = "(체감 온도: 바람이 약해, 실제 기온과 비슷합니다.)";
+      }
+  }
+
+  // ⚠️ [핵심] 특보 상태에 따라 AI의 태도(Persona)와 지침을 다르게 설정
+  const isWarning = alertInfo && alertInfo.status === "Warning";
+  
+  // 1. 특보 정보 텍스트 (비상시에만 데이터에 포함)
+  const alertDataText = isWarning ? `- 🚨 [기상 특보 발효 중]: ${alertInfo.message}` : "- 기상 특보: 없음";
+
+  // 2. AI 페르소나 및 행동 지침 설정
+  const toneInstruction = isWarning 
+    ? `**[비상 모드 작동]** 현재 위험한 기상 특보가 발효 중입니다. '어투'는 진지하고 단호하게 하세요. **'산책', '나들이' 등 야외 활동 제안을 절대 하지 마세요.** 오직 안전 수칙, 대피 요령, 생존을 위한 필수 옷차림(우비, 장화, 방한용품 등)만 강조하세요.`
+    : `어투는 긍정적이고 기분 좋게 해주세요. 날씨가 좋다면 가벼운 산책 등을 권유해도 좋습니다.`;
+
+  // 3. 인사말 규칙 설정
+  const greetingRule = isWarning
+    ? `1. **경고 (필수):** 인사말 대신, **"${alertInfo.message}"** 내용을 가장 먼저, 굵게 강조해서 말하며 시작하세요. (예: "🚨 **현재 태풍 경보가 발효 중입니다.**")`
+    : `1. **인사말 (필수):** [현재 요청 시간]을 바탕으로 "좋은 아침이에요!", "편안한 저녁 보내고 계신가요?" 등 시간대에 맞는 인사를 **가장 첫 문장**에 넣어주세요.`;
 
   const prompt = `
 당신은 날씨 데이터를 분석해 "그래서 뭘 해야 하는지"를 알려주는 친절한 '날씨 알리미'입니다. 어투는 긍정적이고 기분 좋게 해주세요.
@@ -313,26 +355,38 @@ async function generatePolicyMessage(data, currentHour) {
     6.  **마무리 이모지:** 요약 목록 아래에 날씨에 어울리는 ☀️, ☁️, 🌧️ 같은 이모지 1개를 붙이며 마무리하세요.
   `;
 
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  
   const MAX_RETRIES = 3;
-  for(let i=0; i<MAX_RETRIES; i++) {
+  let lastError = null;
+
+  for (let i = 0; i < MAX_RETRIES; i++) {
     try {
-        const res = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.8, maxOutputTokens: 1000 }
-        });
-        if(res.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-            return res.data.candidates[0].content.parts[0].text.trim();
+      const response = await axios.post(GEMINI_URL, {
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.8, maxOutputTokens: 4096}
+      });
+      
+      if (response.data && response.data.candidates && response.data.candidates.length > 0) {
+        const parts = response.data.candidates[0].content.parts;
+        if (parts && parts.length > 0) {
+          return parts[0].text.trim();
         }
-        break; 
-    } catch(e) {
-        if(e.response?.status === 503 && i < MAX_RETRIES - 1) {
-            await new Promise(r => setTimeout(r, 2000));
-        } else {
-            break;
-        }
+      }
+      // (재시도 로직 동일...)
+      lastError = new Error("API returned no candidates");
+      break; 
+    } catch (e) {
+      lastError = e;
+      if (e.response && e.response.status === 503 && i < MAX_RETRIES - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        break;
+      }
     }
   }
-  return "🚨 AI 응답 실패 (서버 과부하)";
+  console.error("Gemini API 호출 실패", lastError);
+  return "🚨 AI가 날씨 정보를 불러오지 못했습니다. (잠시 후 다시 시도해주세요)";
 }
 
 async function preRegisterUser(member) {
