@@ -113,9 +113,9 @@ client.on(Events.GuildMemberAdd, async member => {
 cron.schedule('50 6 * * *', async () => {
   console.log("⏰ 아침 알림 시작");
   try {
-    // ⚠️ [안전장치] 특보 확인
+    // ⚠️ [수정] 기상 특보 확인
     const alertInfo = await checkEmergencyStatus();
-    if (alertInfo.status === "Warning") return; // 위험 시 아침 알림 생략 (혹은 경고문 전송 가능)
+    // (이전에 있던 'if (alertInfo.status === "Warning") return;' 코드는 삭제합니다!)
 
     const kstNow = getKSTDate(new Date());
     const publicChannels = await readSubscribers("Public");
@@ -126,7 +126,10 @@ cron.schedule('50 6 * * *', async () => {
         const data = await readDataFromSheet("0700", "7시", kstNow.stringDate, channel.nx, channel.ny);
         if (!data) continue;
         data.locationName = channel.locationName;
-        const msg = await generatePolicyMessage(data, 6);
+        
+        // ⚠️ [수정] 세 번째 인자로 alertInfo 전달
+        const msg = await generatePolicyMessage(data, 6, alertInfo);
+        
         await sendChannelMessage(channel.channelId, msg, channel.name);
       } catch (e) { console.error(`채널 알림 실패: ${channel.name}`, e); }
     }
