@@ -92,7 +92,7 @@ client.on(Events.GuildMemberAdd, async member => {
   
   try { await preRegisterUser(member); } catch (e) { console.error(e); }
 
-  const GOOGLE_FORM_URL = "https://docs.google.com/forms/YOUR_FORM_URL"; // ⚠️ 본인 폼 주소로 변경 필수
+  const GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfSvSOHML7KNSdXei3oIDilAyTDSaxwO2SieGw322JnCsrA3Q/viewform?usp=dialog"; // ⚠️ 본인 폼 주소로 변경 필수
   const welcomeDM = `안녕하세요 ${member.user.username}님! 🌦️ 
 날씨 알리미의 모든 서비스를 사용하기 위해서는, 먼저 아래 두 단계의 절차를 완료해주셔야 해요!
 
