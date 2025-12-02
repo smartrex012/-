@@ -93,18 +93,25 @@ client.on(Events.GuildMemberAdd, async member => {
   try { await preRegisterUser(member); } catch (e) { console.error(e); }
 
   const GOOGLE_FORM_URL = "https://docs.google.com/forms/YOUR_FORM_URL"; // ⚠️ 본인 폼 주소로 변경 필수
-  const welcomeDM = `안녕하세요 ${member.user.username}님! 🌦️
-1. 본인 ID 복사: \`${member.id}\`
-2. 아래 링크에 ID와 동네를 등록해주세요:
+  const welcomeDM = `안녕하세요 ${member.user.username}님! 🌦️ 
+날씨 알리미의 모든 서비스를 사용하기 위해서는, 먼저 아래 두 단계의 절차를 완료해주셔야 해요!
+
+[ 1단계: 본인의 Discord ID 복사하기 ]
+\`${member.id}\`
+(방금 입장하신 ${member.user.username}님의 고유 ID입니다. 위 ID를 복사해주세요!
+
+[ 2단계: 위치 등록하기 ] 
+아래 Google Form 링크를 열고, 방금 복사한 Discord 고유 ID와 '날씨가 궁금하신 동네 이름'을 입력해 주세요.
+(정확한 '행정동' 이름 (예: 잠실1동, 목3동)을 입력하시면 가장 정확한 예보를 받으실 수 있습니다.):
 > ${GOOGLE_FORM_URL}
-등록 후 '/weather' 명령어를 사용하실 수 있습니다.`;
+등록 후 '일반' 채팅 채널에서 '/weather' 명령어를 사용하여 신청하신 동네의 날씨 보고서를 받아보실 수 있습니다!`;
 
   try { await member.send(welcomeDM); } catch (e) { console.error("DM 전송 실패"); }
 
   if (WELCOME_CHANNEL_ID) {
     try {
       const channel = await client.channels.fetch(WELCOME_CHANNEL_ID);
-      if (channel) await channel.send(`<@${member.id}>님 반갑습니다! DM을 확인해주세요 💌`);
+      if (channel) await channel.send(`<@${member.id}>님 반갑습니다! 먼저, DM을 확인해주세요!`);
     } catch (e) { console.error("환영 메시지 전송 실패", e); }
   }
 });
